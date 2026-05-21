@@ -1,0 +1,62 @@
+version(2);
+project_name = "Helios";
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Indentation 
+
+indent_width = "2";
+default_tab_width = "2";
+
+///////////////////////////////////////////////////////////////
+//~ Sebas: Code File Extensions
+
+patterns = 
+{
+  "*.c",
+  "*.cpp",
+  "*.h",
+  "*.inc",
+  "*.hpp",
+  "*.bat",
+  "*.sh",
+  "*.4coder",
+  "*.glsl",
+  "*.bfs",
+  "*.html",
+  "*.txt",
+  "*.ds",
+  "*.mdesk",
+  "*.asm","*.c",
+  "*.cpp",
+  "*.ds",
+  "*.h",
+  "*.bat",
+  "*.sh",
+  "*.4coder",
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Omit Patterns
+
+blacklist_patterns =
+{
+  ".*"
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Load Paths
+
+////////////////////////////////////////////////////////////////
+paths =
+{
+  { .path = ".",     .recursive = false, .relative = true, },
+  { .path = "src",  .recursive = true , .relative = true, },
+  { .path = "notes", .recursive = true , .relative = true, },
+};
+
+load_paths =
+{
+  .win   = paths,
+  .linux = paths,
+};
+
