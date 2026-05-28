@@ -1,0 +1,26 @@
+// raddbg 0.9.25 project file
+
+recent_file: path: "helios/helios.cpp"
+recent_file: path: "core/core.cpp"
+recent_file: path: "app/app_main.cpp"
+target:
+{
+  executable: "bin/helios.exe"
+  working_directory: "data/"
+  enabled: 1
+}
+debug_info:
+{
+  path: "D:/dev/Templates/4coder_project/bin/App.pdb"
+  timestamp: 66215781043006
+}
+breakpoint:
+{
+  source_location: "app/app_main.cpp:6:1"
+  hit_count: 0
+}
+debug_info:
+{
+  path: "D:/dev/helios/bin/helios.pdb"
+  timestamp: 66215884049160
+}

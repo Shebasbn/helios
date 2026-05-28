@@ -2,3 +2,6 @@ build/
 *.rdi
 *.rdbg
 *.10x
+todo.txt
+data/
+bin/

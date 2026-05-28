@@ -1,62 +1,78 @@
 version(2);
-project_name = "Helios";
+project_name = "project";
 
 ////////////////////////////////////////////////////////////////
-//~ Sebas: Indentation 
+//~ Sebas: Indentation
 
 indent_width = "2";
-default_tab_width = "2";
+indent_tab_width = "2";
 
-///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
 //~ Sebas: Code File Extensions
 
-patterns = 
+patterns =
 {
-  "*.c",
-  "*.cpp",
-  "*.h",
-  "*.inc",
-  "*.hpp",
-  "*.bat",
-  "*.sh",
-  "*.4coder",
-  "*.glsl",
-  "*.bfs",
-  "*.html",
-  "*.txt",
-  "*.ds",
-  "*.mdesk",
-  "*.asm","*.c",
-  "*.cpp",
-  "*.ds",
-  "*.h",
-  "*.bat",
-  "*.sh",
-  "*.4coder",
+    "*.c",
+    "*.cpp",
+    "*.h",
+    "*.inc",
+    "*.hpp",
+    "*.bat",
+    "*.sh",
+    "*.4coder",
+    "*.glsl",
+    "*.bfs",
+    "*.html",
+    "*.txt",
+    "*.ds",
+    "*.mdesk",
+    "*.asm",
 };
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Omit Patterns
 
-blacklist_patterns =
+black_list_patterns =
 {
-  ".*"
+    ".*",
 };
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Load Paths
 
-////////////////////////////////////////////////////////////////
 paths =
 {
-  { .path = ".",     .recursive = false, .relative = true, },
-  { .path = "src",  .recursive = true , .relative = true, },
-  { .path = "notes", .recursive = true , .relative = true, },
+    { .path = ".",     .recursive = false, .relative = true, },
+    { .path = "core",  .recursive = true , .relative = true, },
+    { .path = "game", .recursive = true , .relative = true, },
+    { .path = "include", .recursive = true , .relative = true, },
 };
 
 load_paths =
 {
-  .win   = paths,
-  .linux = paths,
+    .win   = paths,
+    .linux = paths,
 };
 
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Commands
+commands = 
+{
+    .build = { .win = "build.bat",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+    .run = { .win = "pushd bin && App.exe && popd",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+    .debug = { .win = "raddbg --project:project.raddbg --auto_step --quit_after_success",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+};
+
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Default F-Keys
+
+fkey_command =
+{
+    .F1 = "build",
+    .F2 = "debug",
+    .F3 = "run",
+    .F5 = "",
+    .F4 = "",
+};
