@@ -2,6 +2,10 @@ build/
 *.rdi
 *.rdbg
 *.10x
+
+*.4coder
+*.raddbg
+
 todo.txt
 data/
 bin/
