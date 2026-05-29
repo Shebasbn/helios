@@ -317,6 +317,38 @@ typedef void VoidFunction(void);
 //#define CopyCount(dest, src, count) MemoryCopy((dest), (src), sizeof(*(dest)) * (count))
 
 ////////////////////////////////////////////////////////////////
+//~ Sebas: Linked List Operations
+
+
+
+#define CheckNull(p) ((p)==0)
+#define SetNull(p) ((p)=0)
+
+//#define QueuePush_NZ
+
+//#define Quee
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Min, Max, Clamps 
+
+#define Min(a, b) (((a)<(b)) ? (a) : (b))
+#define Max(a, b) (((a)>(b)) ? (a) : (b))
+#define ClampTop(x, a) Min(x,a)
+#define ClampBot(a, x) Max(a,x)
+#define Clamp(a, x, b) (((a)>(x))?(a):((b)<(x))?(b):(x))
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Basic Types
+
+struct String8;
+struct String16;
+struct String32;
+
+
+
+struct Arena;
+struct ArenaTemp;
+////////////////////////////////////////////////////////////////
 //~ Sebas: Limits / Constants 
 
 

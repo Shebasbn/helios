@@ -1,34 +1,31 @@
 #include <common.h>
+#include <platform.h>
+#include <core_string.h>
+#include <arena.h>
 
 #include "helios.h"
 
 #include <stdio.h>
 
-struct foo
+struct Foo
 {
-    int a, b, c;
-};
-
-struct bar
-{
-    int a, b, c, d;
+    String8 name;
+    F32 r, g, b, a;
 };
 
 int main()
 {
-    foo f = { 0, 1, 2 };
-    bar b;
-    foo f2;
-    M_ZeroStruct(&b);
-    Assert(sizeof(f) > 0);
-    M_CopyStruct(&f2, &f);
+    printf("Test\n");
+    PlatformHandle handle = {};
+    String8 helios_str = Str8Lit("Helios!");
+    String8 arena_name =  Str8Lit("Platform Arena");
+    Arena* arena = ArenaAlloc(arena_name);
+    B32 is_running = PF_StartUp(&handle, helios_str, 100, 100, 1280, 720);
     
-    foo foo_arr[10];
-    M_ZeroArray(foo_arr);
-    \
-    foo foo2_arr[14];
-    M_CopyArray(foo2_arr, foo_arr);
-    
+    while(is_running)
+    {
+        
+    }
     
     return 0;
 }

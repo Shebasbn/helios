@@ -22,6 +22,7 @@ if not exist build\build.ninja (
 
 :: 4. Run the build
 echo [Build] Compiling project...
+cmake -DCMAKE_BUILD_TYPE=Debug -B build
 cmake --build build
 
 endlocal

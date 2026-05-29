@@ -61,7 +61,7 @@ commands =
 {
     .build = { .win = "build.bat",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
     .run = { .win = "pushd bin && App.exe && popd",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
-    .debug = { .win = "raddbg --project:project.raddbg --auto_step --quit_after_success",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+    .debug = { .win = "raddbg --project:./project.raddbg --auto_step --quit_after_success",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
 };
 
 

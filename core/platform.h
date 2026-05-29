@@ -4,7 +4,7 @@
 #define PLATFORM_H
 
 #include <common.h>
-#include <core_string.h>
+//#include <core_string.h>
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Platform System 
@@ -21,6 +21,7 @@ B32 PF_StartUp(PlatformHandle* handle, String8 app_name, S32 x, S32 y, S32 width
 B32 PF_Shutdown();
 
 U64 PF_PageSize(void);
+U64 PF_AllocGranularity(void);
 
 void* PF_MemoryReserve(U64 size);
 void PF_MemoryCommit(void* ptr, U64 size);

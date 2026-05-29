@@ -39,4 +39,7 @@ StaticAssert(sizeof(U8) == sizeof(char), "8-bit char size mismatch!");
 StaticAssert(sizeof(U16) == sizeof(char16_t), "16-bit char size mismatch!");
 StaticAssert(sizeof(U32) == sizeof(char32_t), "32-bit char size mismatch!");
 
+force_inline String8 Str8(U8* str, U64 size) { String8 string = { str, size }; return string; }
+#define Str8Lit(str) (Str8((U8*)(str), sizeof(str) - 1))
+
 #endif //CORE_STRING_H

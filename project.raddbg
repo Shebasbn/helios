@@ -1,1 +1,14 @@
+// raddbg 0.9.25 project file
 
+recent_file: path: "helios/helios.cpp"
+target:
+{
+  executable: "bin/helios.exe"
+  working_directory: bin
+  enabled: 1
+}
+debug_info:
+{
+  path: "D:/dev/helios/bin/helios.pdb"
+  timestamp: 66215959067400
+}

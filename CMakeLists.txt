@@ -11,15 +11,25 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/int")
 set(CORE_SOURCES 
     "core/common.h"
     "core/core.h"
+	"core/arena.h"
 	"core/core_string.h"
     "core/platform.h"
 	"core/internal.h"	
 	"core/core.cpp"
     "core/platform_win32.cpp"
+	"core/arena.cpp"
 )
 
 add_library(core STATIC ${CORE_SOURCES})
 target_include_directories(core PUBLIC "${CMAKE_SOURCE_DIR}/core")
+
+if(WIN32)
+    # Windows-specific code or library linking goes here
+    target_link_libraries(core PUBLIC ws2_32 gdi32 user32 winmm)
+else()
+    # Linux, macOS, or other operating systems
+    target_link_libraries(core PUBLIC pthread)
+endif()
 
 
 set(GAME_MODULE_SOURCES 
