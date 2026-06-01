@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.15)
 project(helios CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/int")
+
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
 set(CORE_SOURCES 
     "core/common.h"
@@ -17,11 +23,14 @@ set(CORE_SOURCES
 	"core/internal.h"	
 	"core/core.cpp"
     "core/platform_win32.cpp"
+    "core/core_string.cpp"
 	"core/arena.cpp"
+	"vendor/stb/stb_sprintf.h"
 )
 
 add_library(core STATIC ${CORE_SOURCES})
-target_include_directories(core PUBLIC "${CMAKE_SOURCE_DIR}/core")
+target_include_directories(core PUBLIC "${CMAKE_SOURCE_DIR}/core"  "${CMAKE_SOURCE_DIR}/vendor")
+
 
 if(WIN32)
     # Windows-specific code or library linking goes here

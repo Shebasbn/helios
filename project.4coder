@@ -45,7 +45,7 @@ paths =
     { .path = ".",     .recursive = false, .relative = true, },
     { .path = "core",  .recursive = true , .relative = true, },
     { .path = "game", .recursive = true , .relative = true, },
-    { .path = "include", .recursive = true , .relative = true, },
+    { .path = "vendor", .recursive = true , .relative = true, },
 };
 
 load_paths =

@@ -223,11 +223,11 @@ typedef void VoidFunction(void);
 #define Swap(type, a, b) Stmnt( type _swapper_ = a; a = b; b = _swapper_; )
 
 #if COMPILER_MSVC
-# define AlignOf() __alignof(T)
+# define AlignOf(T) __alignof(T)
 #elif COMPILER_CLANG
-# define AlignOf() __alignof(T)
+# define AlignOf(T) __alignof(T)
 #elif COMPILER_GCC
-# define AlignOf() __alignof__(T)
+# define AlignOf(T) __alignof__(T)
 #else
 # error AlignOf not defined for this compiler.
 #endif
@@ -319,14 +319,47 @@ typedef void VoidFunction(void);
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Linked List Operations
 
-
-
 #define CheckNull(p) ((p)==0)
 #define SetNull(p) ((p)=0)
 
-//#define QueuePush_NZ
+#define QueuePush_NZ(f,l,n,next,zchk,zset) (zchk(f)?\
+((f)=(l)=(n)), (zset((n)->next)):\
+((l)->next=(n),(l)=(n), zset((n)->next)))
 
-//#define Quee
+#define QueuePushFront_NZ(f,l,n,next,zchk,zset) (zchk(f)? \
+((f)=(l)=(n)), (zset((n)->next)): \
+((n)->next=(f), (f)=(n)))
+
+#define QueuePop_NZ(f,l,next,zset) (((f)==(l))?(zset(f),zset(l)):((f)=(f)->next))
+
+#define StackPush_N(f,n,next) ((n)->next=(f), (f)=(n))
+#define StackPop_NZ(f, next, zchk) (zchk(f)?0:((f)=(f)->next))
+
+#define DLLInsert_NPZ(f,l,p,n,next,prev,zchk,zset) (zchk(f)?\
+(((f)=(l)=(n)),(zset((f)->prev)),(zset((l)->next))):\
+zchk(p)?\
+(zset((n)->prev), (n)->next=(f), (f)->prev =(n), (f)=(n)):\
+((zchk((p)->next) ? (0) : ((p)->next->prev=(n))), ((n)->next=(p)->next), ((n)->prev=(p)), ((p)->next=(n)),\
+((p)==(l)?(l)=(n):(0))))
+
+#define DLLPushBack_NZ(f,l,n,next,prev,zchk,zset) DLLInsert_NPZ(f,l,l,n,next,prev,zchk,zset)
+#define DLLRemove_NPZ(f,l,n,next,prev,zchk,zset) (((f)==(l) && (n)==(f))?(zset(f), zset(l)):\
+((f)==(n))?\
+((f)=(f)->next,(zchk(f)?zset(l):zset((f)->prev))):\
+((l)==(n))?\
+((l)=(l)->prev, (zchk(l)?zset(f):zset((l)->next))):\
+((zchk((n)->next)?(0):((n)->next->prev=(n)->prev)),\
+(zchk((n)->prev)?(0):((n)->prev->next=(n)->next))))
+
+#define QueuePush(f,l,n)      QueuePush_NZ(f,l,n,next,CheckNull,SetNull)
+#define QueuePushFront(f,l,n) QueuePushFront_NZ(f,l,n,next,CheckNull,SetNull)
+#define QueuePop(f,l)         QueuePop_NZ(f,l,next,SetNull)
+#define StackPush(f,n)        StackPush_N(f,n,next) 
+#define StackPop(f)           StackPop_NZ(f, next, CheckNull)
+#define DLLPushBack(f,l,n)    DLLPushBack_NZ(f,l,n,next,prev,CheckNull,SetNull)
+#define DLLPushFront(f,l,n)   DLLPushBack_NZ(l,f,n,prev,next,CheckNull,SetNull)
+#define DLLInsert(f,l,p,n)    DLLInsert_NPZ(f,l,p,n,next,prev,CheckNull,SetNull)
+#define DLLRemove(f,l,n)      DLLRemove_NPZ(f,l,n,next,prev,CheckNull,SetNull)
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Min, Max, Clamps 
@@ -340,10 +373,39 @@ typedef void VoidFunction(void);
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Basic Types
 
-struct String8;
-struct String16;
-struct String32;
+struct String8
+{
+    union
+    {
+        U8* str;
+        char* cstr;
+    };
+    U64 size;
+};
 
+struct String16
+{
+    union
+    {
+        U16* str;
+        char16_t* cstr;
+    };
+    U64 size;
+};
+
+struct String32
+{
+    union
+    {
+        U32* str;
+        char32_t* cstr;
+    };
+    U64 size;
+};
+
+StaticAssert(sizeof(U8) == sizeof(char), "8-bit char size mismatch!");
+StaticAssert(sizeof(U16) == sizeof(char16_t), "16-bit char size mismatch!");
+StaticAssert(sizeof(U32) == sizeof(char32_t), "32-bit char size mismatch!");
 
 
 struct Arena;

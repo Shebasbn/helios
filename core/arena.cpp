@@ -12,13 +12,13 @@ Arena* ArenaAlloc_(ArenaParams params)
     void* base = params.opt_back_buffer;
     if (base == 0)
     {
-        void* arena = PF_MemoryReserve(reserve_size);
+        base = PF_MemoryReserve(reserve_size);
         PF_MemoryCommit(base, commit_size);
     }
     
     Arena* arena = (Arena*)base;
     /*arena->flags = params->flags;*/
-    arena->name_size = params.name.size;
+    arena->name_size = (U32)params.name.size;
     // TODO(Sebas): Clamp 64 -> 32 bit
     arena->commit_size = params.commit_size;
     //arena->reserve_size = params->reserve_size;

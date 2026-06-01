@@ -4,7 +4,7 @@
 #define ARENA_H
 
 #include <common.h>
-#include <core_string.h>
+
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Constants
