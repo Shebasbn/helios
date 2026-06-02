@@ -16,11 +16,13 @@ struct PlatformState
     DWORD page_size;
     DWORD alloc_granularity;
     LARGE_INTEGER clock_freq;
+    U32 client_width;
+    U32 client_height;
 };
 
 LRESULT CALLBACK win32_process_messages(HWND window, U32 msg, WPARAM w_param, LPARAM l_param);
 
-global PlatformState* g_win32_state = {};
+global PlatformState* g_win32_state;
 
 PF_KeyCode g_win32_to_pf_keycode[256] = {};
 
@@ -184,6 +186,8 @@ B32 PF_StartUp(Arena* arena,
         U32 client_y = y;
         U32 client_width = width;
         U32 client_height = height;
+        state->client_width = client_width;
+        state->client_height = client_height;
         
         U32 window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
         U32 window_extended_style = WS_EX_APPWINDOW;
@@ -217,7 +221,7 @@ B32 PF_StartUp(Arena* arena,
         ShowWindow(state->window, show_window_cmd_flags);
         
         QueryPerformanceFrequency(&state->clock_freq);
-        timeBeginPeriod(1);
+        //timeBeginPeriod(1);
         state->start_up = PF_TimeStampCreate();
         result = true;
     }
@@ -252,7 +256,7 @@ void PF_Shutdown(Arena* arena, PlatformHandle handle)
     {
         DestroyWindow(state->window);
         state->window = NULL;
-        timeEndPeriod(1);
+        //timeEndPeriod(1);
     }
     ArenaClear(arena);
 }
@@ -261,11 +265,11 @@ void PF_Shutdown(Arena* arena, PlatformHandle handle)
 U64 PF_PageSize(void)
 {
     U64 result = 0;
-    if (g_win32_state->page_size == 0)
+    if (g_win32_state == 0)
     {
         SYSTEM_INFO info;
         GetSystemInfo(&info);
-        g_win32_state->page_size = info.dwPageSize;
+        return info.dwPageSize;
     }
     result = g_win32_state->page_size;
     return result;
@@ -274,11 +278,11 @@ U64 PF_PageSize(void)
 U64 PF_AllocGranularity(void)
 {
     U64 result = 0;
-    if (g_win32_state->alloc_granularity == 0)
+    if (g_win32_state == 0)
     {
         SYSTEM_INFO info;
         GetSystemInfo(&info);
-        g_win32_state->alloc_granularity = info.dwAllocationGranularity;
+        return info.dwAllocationGranularity;
     }
     result = g_win32_state->alloc_granularity;
     return result;
@@ -307,6 +311,30 @@ void PF_MemoryDecommit(void* ptr, U64 size)
     VirtualFree(ptr, size, MEM_DECOMMIT);
 }
 
+global volatile HANDLE g_console_handle = 0;
+global volatile B32 console_flag = true;
+void PF_ConsoleWrite(String8 message, U8 colour)
+{
+    if (InterlockedCompareExchange((LONG volatile*)&console_flag, (LONG)false, (LONG)true))
+    {
+        g_console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    }
+    while (g_console_handle == 0) { 
+        Sleep(0); 
+    }
+    UseVar(colour);
+    //local U8 levels[] = {64, 4, 6, 2, 1, 8};
+    //SetConsoleTextAttribute(g_console_handle, levels[colour]);
+    //OutputDebugStringA(message);
+    //U64 length = strlen(message);
+    LPDWORD count = 0;
+    WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), message.cstr, (DWORD)message.size, count, 0);
+    //SetConsoleTextAttribute(g_console_handle, 7);
+}
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Platform Time Functions
+
 TimeStamp PF_TimeStampCreate(void)
 {
     TimeStamp time_stamp = {};
@@ -314,6 +342,47 @@ TimeStamp PF_TimeStampCreate(void)
     QueryPerformanceCounter(&counter);
     time_stamp.counter = counter.QuadPart;
     return time_stamp;
+}
+
+F64 PF_TimeDeltaInSeconds(TimeStamp start, TimeStamp end)
+{
+    return (F64)(end.counter - start.counter) / (F64)g_win32_state->clock_freq.QuadPart;
+}
+
+void PF_TimeSleep(F64 seconds)
+{
+    local HANDLE timer = CreateWaitableTimerEx(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    
+    
+    LARGE_INTEGER frequency;
+    if (g_win32_state)
+    {
+        frequency = g_win32_state->clock_freq;
+    }
+    else
+    {
+        QueryPerformanceFrequency(&frequency);
+    }
+    
+    LARGE_INTEGER start;
+    LARGE_INTEGER current;
+    
+    QueryPerformanceCounter(&start);
+    
+    F64 seconds_elapsed = 0;
+    F64 sleep_seconds = seconds - 0.0015; 
+    if (sleep_seconds > 0)
+    {
+        LARGE_INTEGER due_time;
+        due_time.QuadPart = (LONGLONG)(-sleep_seconds * 10000000.0); 
+        SetWaitableTimerEx(timer, &due_time, 0, NULL, NULL, NULL, 0);
+        WaitForSingleObject(timer, INFINITE);
+    }
+    
+    do {
+        QueryPerformanceCounter(&current);
+        seconds_elapsed = (F64)(current.QuadPart - start.QuadPart) / frequency.QuadPart;
+    } while (seconds_elapsed < seconds);
 }
 
 B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
@@ -329,6 +398,7 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
         
         PF_Event* event = PushArray(arena, PF_Event, 1);
         event->timestamp = PF_TimeStampCreate();
+        event->kind = PF_EVENT_NILL;
         
         switch(msg.message)
         {
@@ -346,11 +416,15 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
             {
                 RECT r;
                 GetClientRect(state->window, &r);
-                S32 width = r.right - r.left;
-                S32 height = r.bottom - r.top;
+                // TODO(Sebas): Clamp between (0, MointorDim)
+                U32 width = r.right - r.left;
+                U32 height = r.bottom - r.top;
                 event->kind = PF_EVENT_SURFACE_RESIZED;
-                event->surface.width = (U32)width;
-                event->surface.height = (U32)height;
+                event->surface.width = width;
+                event->surface.height = height;
+                state->client_width = width;
+                state->client_height = height;
+                
                 // TODO(Sebas): Fire an event for window resize.
             } break;
             case WM_KEYDOWN:
@@ -366,11 +440,11 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
                 
                 B8 shift_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
                 B8 ctrl_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-                B8 shift_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                B8 alt_down = (GetKeyState(VK_MENU) & 0x8000) != 0;
                 
                 PF_KeyCode code = GetPFKeyCode(vkcode);
                 event->input_code = code;
-                event->key.mods =  | |;
+                event->key.mods = (PF_Modifiers)((alt_down << 2)  | (shift_down << 1) | ctrl_down);
                 if (pressed)
                 {
                     event->kind = PF_EVENT_KEY_PRESSED;
@@ -383,8 +457,7 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
                 
                 if (!pressed && !released)
                 {
-                    TempEnd(restore_point);
-                    event = nullptr;
+                    event->kind = PF_EVENT_NILL;
                 }
                 
             } break;
@@ -393,14 +466,18 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
                 S32 mouse_x = GET_X_LPARAM(msg.lParam);
                 S32 mouse_y = GET_Y_LPARAM(msg.lParam);
                 event->kind = PF_EVENT_POINTER_MOVE;
-                UseVar(mouse_x);
-                UseVar(mouse_y);
+                event->pointer.x = (F32)mouse_x / (F32)state->client_width;
+                event->pointer.y = (F32)mouse_y / (F32)state->client_height;
                 // TODO(Sebas): Input Processing.
             } break;
             case WM_MOUSEWHEEL:
             {
                 S16 raw_delta = GET_WHEEL_DELTA_WPARAM(msg.wParam);
                 F32 wheel_delta = (F32)raw_delta / (F32)WHEEL_DELTA;
+                
+                event->kind = PF_EVENT_POINTER_AXIS_MOVE;
+                event->input_code = PF_POINTER_AXIS_SCROLL_Y; 
+                event->analog.value = wheel_delta;
                 
                 S32 screen_x = GET_X_LPARAM(msg.lParam);
                 S32 screen_y = GET_Y_LPARAM(msg.lParam);
@@ -425,32 +502,48 @@ B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list)
             case WM_RBUTTONUP:   
             case WM_MBUTTONUP:
             {
-                U8 vkcode = 0;
+                PF_PointerCode code = PF_POINTER_NILL;
+                //PF_EventKind kind = PF_EVENT_NILL;
                 B8 is_up = FALSE;
                 
                 // Map the Win32 message to your existing U8 vkcode space
                 switch (msg.message)
                 {
-                    case WM_LBUTTONDOWN: { vkcode = VK_LBUTTON; is_up = FALSE; } break;
-                    case WM_LBUTTONUP:   { vkcode = VK_LBUTTON; is_up = TRUE;  } break;
-                    case WM_RBUTTONDOWN: { vkcode = VK_RBUTTON; is_up = FALSE; } break;
-                    case WM_RBUTTONUP:   { vkcode = VK_RBUTTON; is_up = TRUE;  } break;
-                    case WM_MBUTTONDOWN: { vkcode = VK_MBUTTON; is_up = FALSE; } break;
-                    case WM_MBUTTONUP:   { vkcode = VK_MBUTTON; is_up = TRUE;  } break;
+                    case WM_LBUTTONDOWN: { code = PF_POINTER_BUTTON_LEFT; is_up = FALSE; } break;
+                    case WM_LBUTTONUP:   { code = PF_POINTER_BUTTON_LEFT; is_up = TRUE;  } break;
+                    case WM_RBUTTONDOWN: { code = PF_POINTER_BUTTON_RIGHT; is_up = FALSE; } break;
+                    case WM_RBUTTONUP:   { code = PF_POINTER_BUTTON_RIGHT; is_up = TRUE;  } break;
+                    case WM_MBUTTONDOWN: { code = PF_POINTER_BUTTON_MIDDLE; is_up = FALSE; } break;
+                    case WM_MBUTTONUP:   { code = PF_POINTER_BUTTON_MIDDLE; is_up = TRUE;  } break;
                 }
                 
                 // Windows mouse messages do not natively auto-repeat like keys
-                B8 is_repeat = FALSE; 
+                //B8 is_repeat = FALSE; 
                 B8 released = is_up;
                 B8 pressed = !is_up;
-                UseVar(is_repeat);
-                UseVar(released);
-                UseVar(pressed);
+                
+                event->input_code = code;
+                if (pressed)
+                {
+                    event->kind = PF_EVENT_POINTER_DOWN;
+                }
+                else if(released)
+                {
+                    event->kind = PF_EVENT_POINTER_UP;
+                }
+                
+                
             } break;
             default:
             {
                 DispatchMessage(&msg);
             }break;
+        }
+        
+        if (event->kind == PF_EVENT_NILL)
+        {
+            TempEnd(restore_point);
+            event = nullptr;
         }
         
         if (event != 0)
@@ -491,6 +584,222 @@ win32_process_messages(HWND window, U32 msg, WPARAM w_param, LPARAM l_param)
     UseVar(w_param);
     UseVar(l_param);
     return result;
+}
+
+struct PF_Win32_Thread
+{
+    HANDLE handle;
+    DWORD thread_id;
+};
+
+struct TCTXT
+{
+    U32 thread_idx;
+};
+
+global per_thread TCTXT g_thread_ctxt = {};
+
+struct Job
+{
+    void* data;
+    B32 (*execute)(void* data);
+};
+
+struct JobQueue
+{
+    U32 capacity_mask; 
+    
+    volatile U32 write_index;
+    volatile U32 read_index;
+    
+    volatile U32 jobs_published;
+    volatile U32 jobs_completed;
+    
+    HANDLE semaphore;
+    
+    Job* jobs;
+};
+
+global JobQueue g_job_queue;
+
+Job PopJob(JobQueue* queue)
+{
+    Job result = {};
+    for(;;)
+    {
+        U32 current_read = queue->read_index;
+        U32 current_published = queue->jobs_published;
+        
+        if (current_read == current_published)
+        {
+            break;
+        }
+        
+        U32 next_read = current_read + 1;
+        
+        if((U32)InterlockedCompareExchange((LONG volatile*)&queue->read_index, next_read, current_read) == current_read)
+        {
+            U32 index = current_read & queue->capacity_mask;
+            result = queue->jobs[index];
+            break;
+        }
+    }
+    return result;
+}
+
+void PushJob(JobQueue* queue, Job new_job)
+{
+    U32 claim_index = InterlockedExchangeAdd((LONG volatile*)&queue->write_index, 1);
+    
+    U32 safe_slot = claim_index & queue->capacity_mask;
+    
+    queue->jobs[safe_slot] = new_job;
+    
+    ReadWriteMemoryBarrier();
+    
+    InterlockedIncrement((LONG volatile *)&queue->jobs_published);
+}
+
+void PushJob()
+{
+    
+}
+
+struct PrintJobData
+{
+    U32 task_id;
+};
+
+B32 PrintHelloJob(void* data)
+{
+    PrintJobData* print_data = (PrintJobData*)data;
+    TCTXT* ctxt = &g_thread_ctxt;
+    
+    char buffer[256];
+    ts_stbsp_snprintf(buffer, ArrayCount(buffer), "[Thread %d]: is executing Print Job #%d\n", ctxt->thread_idx, print_data->task_id);
+    String8 result = Str8C(buffer);
+    PF_ConsoleWrite(result, 1);
+    return true;
+}
+
+struct ThreadStartupArgs
+{
+    JobQueue* queue;
+    U32 thread_idx;
+    U32 thread_count;
+};
+
+DWORD WINAPI ThreadProc(void* thread_data)
+{
+    ThreadStartupArgs* args = (ThreadStartupArgs*)thread_data;
+    JobQueue* queue = args->queue;
+    U32 thread_idx = args->thread_idx;
+    U32 thread_count = args->thread_count;
+    UseVar(thread_count);
+    
+    TCTXT* ctxt =  &g_thread_ctxt;
+    ctxt->thread_idx = thread_idx;
+    
+    for(;;)
+    {
+        WaitForSingleObjectEx(queue->semaphore, INFINITE, FALSE);
+        
+        Job job = PopJob(queue);
+        
+        if (job.execute)
+        {
+            job.execute(job.data);
+            
+            InterlockedIncrement(&queue->jobs_completed);
+        }
+    }
+    //return 0;
+}
+
+global ThreadStartupArgs args[15] = {};
+global U32 thread_count = ArrayCount(args) + 1;
+global PrintJobData g_print_jobs[30] = {};
+
+void PF_CreateThread(Arena* arena)
+{
+    JobQueue* job_queue = &g_job_queue;
+    U32 job_count = 4096;
+    job_queue->capacity_mask = job_count - 1;
+    job_queue->jobs = PushArray(arena, Job, job_count);
+    job_queue->write_index = 0;
+    job_queue->read_index = 0;
+    job_queue->jobs_published = 0;
+    job_queue->jobs_completed = 0;
+    
+    
+    U32 initial_count = 0;
+    job_queue->semaphore = CreateSemaphoreExA(0, 
+                                              initial_count, 
+                                              job_count, 
+                                              0, 0, 
+                                              SEMAPHORE_ALL_ACCESS);
+    
+    for(U32 thread_idx = 1;
+        thread_idx < thread_count; 
+        thread_idx += 1)
+    {
+        
+        args[thread_idx].queue = job_queue;
+        args[thread_idx].thread_idx = thread_idx;
+        args[thread_idx].thread_count = thread_count;
+        DWORD thread_id;
+        HANDLE handle = CreateThread(0, 0, ThreadProc, &args[thread_idx], 0,&thread_id);
+        UseVar(handle);
+    }
+    
+    Sleep(10);
+    
+    {
+        String8 string = Str8Lit("\nPushing 30 printing jobs into the ring buffer...\n\n");
+        PF_ConsoleWrite(string, 7);
+    }
+    
+    PrintJobData* print_jobs = g_print_jobs;
+    U32 dispatched_count = ArrayCount(g_print_jobs);
+    
+    for(U32 i = 0; i < dispatched_count; ++i)
+    {
+        print_jobs[i].task_id = i + 1;
+        
+        Job print_job = {};
+        print_job.data = &print_jobs[i];
+        print_job.execute =  PrintHelloJob;
+        PushJob(&g_job_queue, print_job);
+    }
+    
+    ReleaseSemaphore(g_job_queue.semaphore, dispatched_count, NULL);
+    
+    while(g_job_queue.jobs_completed < dispatched_count)
+    {
+        Sleep(0);
+    }
+    
+    while(g_job_queue.jobs_completed < dispatched_count)
+    {
+        TCTXT* ctxt =  &g_thread_ctxt;
+        ctxt->thread_idx = 0;
+        Job job = PopJob(&g_job_queue);
+        if(job.execute)
+        {
+            job.execute(job.data);
+            InterlockedIncrement((LONG volatile*)&g_job_queue.jobs_completed);
+        }
+        else
+        {
+            SwitchToThread(); // Give up time slice to worker threads if queue empty
+        }
+    }
+    {
+        String8 string = Str8Lit("\nAll 30 jobs are completed. Stage finished successfully!\n");
+        PF_ConsoleWrite(string, 7);
+    }
+    
+    
 }
 
 

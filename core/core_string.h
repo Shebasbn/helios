@@ -36,6 +36,6 @@ String8 PushStr8FV(Arena* arena,char* fmt, va_list args);
 String8 PushStr8F(Arena* arena, char* fmt, ...);
 String8 PushStr8FillByte(Arena* arena, U64 size, U8 byte);
 
-#define Str8VArg(s) ((int)(s).size, (s).str)
+#define Str8VArg(s) (int)(s).size, (s).str
 
 #endif //CORE_STRING_H

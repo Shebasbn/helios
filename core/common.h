@@ -186,9 +186,9 @@ typedef void VoidFunction(void);
 #define fallthrough
 
 #if COMPILER_MSVC
-# define thread_var __declspec(thread)
+# define per_thread __declspec(thread)
 #else
-# define thread_var __thread
+# define per_thread __thread
 #endif
 
 #if COMPILER_MSVC

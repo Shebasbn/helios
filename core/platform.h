@@ -28,6 +28,8 @@ void PF_MemoryCommit(void* ptr, U64 size);
 void PF_MemoryDecommit(void* ptr, U64 size);
 void PF_MemoryRelease(void* ptr);
 
+void PF_ConsoleWrite(String8 message, U8 colour);
+
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Platform Time Types and Functions
 
@@ -314,5 +316,16 @@ struct PF_EventList
 };
 
 B32 PF_ProcessPFEvents(Arena* arena, PlatformHandle handle, PF_EventList* list);
+
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Mulitthreading
+
+//struct PF_ThreadHandle
+//{
+//void* thread;
+//};
+
+void PF_CreateThread(Arena* arena);
 
 #endif //PLATFORM_H
