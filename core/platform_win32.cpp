@@ -649,8 +649,15 @@ Job PopJob(JobQueue* queue)
 
 void PushJob(JobQueue* queue, Job new_job)
 {
-    U32 claim_index = InterlockedExchangeAdd((LONG volatile*)&queue->write_index, 1);
+    U32 queue_size = queue->write_index - queue->read_index;
+    U32 max_cap = queue->capacity_mask + 1;
     
+    if(queue_size >= max_cap)
+    {
+        Assert(!"Job queue overflow! Increase Capacity.");
+    }
+    
+    U32 claim_index = InterlockedExchangeAdd((LONG volatile*)&queue->write_index, 1);
     U32 safe_slot = claim_index & queue->capacity_mask;
     
     queue->jobs[safe_slot] = new_job;
@@ -658,11 +665,6 @@ void PushJob(JobQueue* queue, Job new_job)
     ReadWriteMemoryBarrier();
     
     InterlockedIncrement((LONG volatile *)&queue->jobs_published);
-}
-
-void PushJob()
-{
-    
 }
 
 struct PrintJobData
@@ -716,8 +718,8 @@ DWORD WINAPI ThreadProc(void* thread_data)
     //return 0;
 }
 
-global ThreadStartupArgs args[15] = {};
-global U32 thread_count = ArrayCount(args) + 1;
+global ThreadStartupArgs args[11] = {};
+global U32 thread_count = ArrayCount(args);
 global PrintJobData g_print_jobs[30] = {};
 
 void PF_CreateThread(Arena* arena)
@@ -739,7 +741,7 @@ void PF_CreateThread(Arena* arena)
                                               0, 0, 
                                               SEMAPHORE_ALL_ACCESS);
     
-    for(U32 thread_idx = 1;
+    for(U32 thread_idx = 0;
         thread_idx < thread_count; 
         thread_idx += 1)
     {
@@ -781,17 +783,17 @@ void PF_CreateThread(Arena* arena)
     
     while(g_job_queue.jobs_completed < dispatched_count)
     {
-        TCTXT* ctxt =  &g_thread_ctxt;
-        ctxt->thread_idx = 0;
-        Job job = PopJob(&g_job_queue);
-        if(job.execute)
+        DWORD wait_result = WaitForSingleObjectEx(g_job_queue.semaphore, 1, FALSE);
+        if(wait_result == WAIT_OBJECT_0)
         {
-            job.execute(job.data);
-            InterlockedIncrement((LONG volatile*)&g_job_queue.jobs_completed);
-        }
-        else
-        {
-            SwitchToThread(); // Give up time slice to worker threads if queue empty
+            TCTXT* ctxt =  &g_thread_ctxt;
+            ctxt->thread_idx = 11;
+            Job job = PopJob(&g_job_queue);
+            if(job.execute)
+            {
+                job.execute(job.data);
+                InterlockedIncrement((LONG volatile*)&g_job_queue.jobs_completed);
+            }
         }
     }
     {
