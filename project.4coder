@@ -1,0 +1,96 @@
+version(2);
+project_name = "Helios";
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Indentation
+
+indent_with = "2";
+default_tab_width = "2";
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Code File Extensions
+
+patterns =
+{
+  "*.c",
+  "*.cpp",
+  "*.hpp",
+  "*.h",
+  "*.inc",
+  "*.bat",
+  "*.sh",
+  "*.4coder",
+  "*.glsl",
+  "*.bfs",
+  "*.html",
+  "*.txt",
+  "*.ds",
+  "*.mdesk",
+  "*.asm",
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Omit Patterns
+
+blacklist_patterns =
+{
+  ".*",
+  "metagen_base_*",
+  "metagen_os_*",
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Load Paths
+
+
+paths =
+{
+  { .path = ".",     .recursive = false, .relative = true, },
+  { .path = "code",  .recursive = true , .relative = true, },
+  { .path = "notes", .recursive = true , .relative = true, },
+};
+load_paths =
+{
+  .win   = paths,
+  .linux = paths,
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Commands
+
+commands =
+{
+  .Sebas_f1 =      { .win = "raddbg --ipc kill_all && build.bat",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .Sebas_f2 =      { .win = "raddbg --ipc kill_all && rmdir /s /q build", .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .Sebas_f3 =      { .win = "raddbg --ipc kill_all && raddbg --ipc run",  .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .build_clean =   { .win = "raddbg --ipc kill_all && rmdir /s /q build", .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .build = { .win = "build.bat",                         .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .run =   { .win = "pushd build && sandbox.exe && popd",        .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = true,  },
+  
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Default F-Keys
+
+fkey_command =
+{
+  .F1 = "build_sandbox",
+  .F2 = "",
+  .F3 = "run_sandbox",
+};
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Username Overridden F-Keys
+
+
+fkey_command_override =
+{
+  .Sebas =
+  {
+    .F1 = "Sebas_f1",
+    .F2 = "Sebas_f2",
+    .F3 = "Sebas_f3",
+  },
+};
+
+
