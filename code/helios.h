@@ -3,4 +3,10 @@
 #ifndef HELIOS_H
 #define HELIOS_H
 
+struct game_state
+{
+  s32 blueOffset;
+  s32 greenOffset;
+};
+
 #endif //HELIOS_H

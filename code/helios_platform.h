@@ -245,12 +245,21 @@ extern "C"
     INPUT_EVENT_COUNT,
   };
   
+  enum game_input_modifiers
+  {
+    INPUT_MODS_NONE = 0,
+    INPUT_MODS_SHIFT = (1 << 0),
+    INPUT_MODS_CTRL = (1 << 1),
+    INPUT_MODS_ALT = (1 << 2),
+  };
+  
   struct game_input_event
   {
     game_input_event_type type;
     game_input_keycode code;
     f32 mouseX;
     f32 mouseY;
+    game_input_modifiers currentModifiers;
   };
   
   struct game_button_state
@@ -315,7 +324,17 @@ extern "C"
     s32 bytesPerPixel;
   };
   
-  function void GameUpdateAndRender(game_frame_buffer* buffer, game_input* input);
+  //~ NOTE(Sebas): REQUIRED to be cleared to zero at startup
+  struct game_memory
+  {
+    b32 isInitialized;
+    u64 permanentMemorySize;
+    void* permanentMemory;
+    u64 transientMemorySize;
+    void* transientMemory;
+  };
+  
+  function void GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* input);
   
 #if HELIOS_CPP && 0
 }

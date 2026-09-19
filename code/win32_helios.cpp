@@ -111,8 +111,6 @@ Win32LoadXInput(void)
 
 read_only static win32_window NilWindow = {};
 
-global b32 GlobalRunning = false;
-
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Win32 Functions
 
@@ -245,6 +243,29 @@ Win32ProcessKeyboardMessage(game_button_state* newState, b32 isDown)
   }
 }
 
+function void
+Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type, game_input_keycode code, game_input_modifiers mods, f32 mouseX, f32 mouseY)
+{
+  HS_Assert(input->eventCount < MAX_FRAME_EVENTS && "Ran out of available slots for events!");
+  if(input->eventCount < MAX_FRAME_EVENTS)
+  {
+    game_input_event* event = &input->events[input->eventCount++]; 
+    event->type = type;
+    event->code = code;
+    event->mouseX = mouseX;
+    event->mouseY = mouseY;
+    event->currentModifiers = mods;
+  }
+  else
+  {
+    //~ TODO(Sebas): Log Failure of Event Creation!
+  }
+};
+//function void 
+//Win32ProcessMouseButtonMessages(game_keyboard_input* input, game_input_keycode code, b32 isDown, )
+//{
+//
+//}
 function void  
 Win32ProcessPendingMessages(win32_window* window, 
                             win32_frame_buffer* buffer, 
@@ -253,51 +274,62 @@ Win32ProcessPendingMessages(win32_window* window,
   MSG message = {};
   while(PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
   {
+    
     switch(message.message)
     {
       case WM_KEYDOWN:
-      {
-        game_input_keycode code = (game_input_keycode)message.wParam;
-        Win32ProcessKeyboardMessage(&input->buttons[code], true);
-        if(input->eventCount < MAX_FRAME_EVENTS)
-        {
-          game_input_event* event = &input->events[input->eventCount++]; 
-          event->type = INPUT_EVENT_KEY_DOWN;
-          event->code = code;
-          event->mouseX = input->mouseX;
-          event->mouseY= input->mouseY;
-        }
-        else
-        {
-          HS_Assert(input->eventCount < MAX_FRAME_EVENTS);
-        }
-      } break;
       case WM_KEYUP:
       {
         game_input_keycode code = (game_input_keycode)message.wParam;
-        Win32ProcessKeyboardMessage(&input->buttons[code], false);
-        
-        if(input->eventCount < MAX_FRAME_EVENTS)
+        b32 isDown = (message.lParam & (1 << 31)) == 0;
+        b32 wasDown = (message.lParam & (1 << 30)) != 0;
+        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
+        if(isDown != wasDown)
         {
-          game_input_event* event = &input->events[input->eventCount++]; 
-          event->type = INPUT_EVENT_KEY_UP;
-          event->code = code;
-          event->mouseX = input->mouseX;
-          event->mouseY= input->mouseY;
+          game_input_event_type eventType = (isDown) ? INPUT_EVENT_KEY_DOWN : INPUT_EVENT_KEY_UP;
+          Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
         }
-        else
-        {
-          HS_Assert(input->eventCount < MAX_FRAME_EVENTS);
-        }
+      } break;
+      case WM_LBUTTONUP:
+      case WM_LBUTTONDOWN:
+      {
+        game_input_keycode code = HS_KEY_LBUTTON;
+        b32 isDown = (message.wParam & MK_LBUTTON) != 0;
+        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
+        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
+        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+      }break;
+      case WM_MBUTTONUP:
+      case WM_RBUTTONUP:
+      {
+        game_input_keycode code = HS_KEY_RBUTTON;
+        b32 isDown = (message.wParam & MK_RBUTTON) != 0;
+        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
+        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
+        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+      }break;
+      case WM_MBUTTONDOWN:
+      case WM_RBUTTONDOWN:
+      {
+        game_input_keycode code = HS_KEY_MBUTTON;
+        b32 isDown = (message.wParam & MK_MBUTTON) != 0;
+        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
+        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
+        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
       } break;
       case WM_MOUSEMOVE:
       {
         input->mouseX = (f32)GET_X_LPARAM(message.lParam); 
         input->mouseY = (f32)GET_Y_LPARAM(message.lParam); 
+#if 0
+        char strBuffer[256];
+        sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
+        OutputDebugString(strBuffer);
+#endif
       } break; 
       case WM_QUIT:
       {
-        GlobalRunning = false;
+        window->isRunning = false;
         OutputDebugString("WM_QUIT\n");
         return;
       } break;
@@ -474,9 +506,26 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   win32_window window = {}; 
   
-  GlobalRunning = Win32WindowCreate(&window, instance,BUFFER_WIDTH, BUFFER_HEIGHT);
+#if HELIOS_DEBUG
+  LPVOID baseAddress = (LPVOID)HS_Terabytes(2);
+#else
+  LPVOID baseAddress = 0;
+#endif
   
-  if (window.handle)
+  game_memory gameMemory = {};
+  gameMemory.permanentMemorySize = HS_Megabytes(64);
+  gameMemory.transientMemorySize = HS_Gigabytes(4);
+  u64 totalSize = gameMemory.permanentMemorySize + gameMemory.transientMemorySize;
+  
+  gameMemory.permanentMemory = VirtualAlloc(baseAddress, totalSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+  gameMemory.transientMemory = ((u8*)gameMemory.permanentMemory + gameMemory.permanentMemorySize);
+  
+  HS_Assert(baseAddress == gameMemory.permanentMemory);
+  
+  window.isRunning 
+    = Win32WindowCreate(&window, instance,BUFFER_WIDTH, BUFFER_HEIGHT) && gameMemory.permanentMemory && gameMemory.transientMemory; 
+  
+  if(window.isRunning)
   {
     win32_frame_buffer frameBuffer = {};
     GlobalFrameBuffer = &frameBuffer;
@@ -489,20 +538,18 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     LARGE_INTEGER lastCounter;
     QueryPerformanceCounter(&lastCounter);
     u64 lastCycleCount = __rdtsc();
-    while(GlobalRunning)
+    while(window.isRunning)
     {
       game_keyboard_input* oldKeyboard = &oldInput->keyboard;
       game_keyboard_input* newKeyboard = &newInput->keyboard;
+      memset(newKeyboard, 0, sizeof(game_keyboard_input));
       for(u32 buttonIdx = 0;
           buttonIdx < HS_ArrayCount(newKeyboard->buttons);
           ++buttonIdx)
       {
         newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx].endedDown;
-        newKeyboard->buttons[buttonIdx].transitionCount = 0;
       }
-      memset(newKeyboard->events, 0, MAX_FRAME_EVENTS);
-      newKeyboard->eventCount = 0;
-      newKeyboard->textCount = 0;
+      
       game_input* input = newInput;
       input->isController = false;
       Win32ProcessPendingMessages(&window, &frameBuffer, &input->keyboard);
@@ -590,7 +637,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
 #endif
       
       
-      GameUpdateAndRender(&frameBuffer.gameFrameBuffer, input);
+      GameUpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
       
       win32_dimension clientDim = Win32WindowClientDimensions(window.handle);
       HDC deviceContext = GetDC(window.handle);

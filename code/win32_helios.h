@@ -16,6 +16,7 @@ struct win32_window
   DWORD style;
   DWORD exStyle;
   b32 isResizing;
+  b32 isRunning;
 };
 
 #define BUFFER_WIDTH 960 

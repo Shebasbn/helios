@@ -28,11 +28,16 @@ DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
 }
 
 function void 
-GameUpdateAndRender(game_frame_buffer* buffer, game_input* inputState)
+GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* inputState)
 {
-  local_persist s32 BlueOffset = 0;
-  local_persist s32 GreenOffset = 0;
-  
+  HS_Assert(sizeof(game_state) <= memory->permanentMemorySize);
+  game_state* gameState = (game_state*)memory->permanentMemory;
+  if(!memory->isInitialized)
+  {
+    
+    //~ TODO(Sebas): This may be more appropriate to do in the platform layer.
+    memory->isInitialized = true;
+  }
   if(inputState->isController)
   {
     //~ TODO(Sebas):  Use analog movement tuning, And Virtual selector/mouse
@@ -61,9 +66,9 @@ GameUpdateAndRender(game_frame_buffer* buffer, game_input* inputState)
     {
       speedX = -1;
     }
-    BlueOffset += speedX;
-    GreenOffset += speedY;
+    gameState->blueOffset += speedX;
+    gameState->greenOffset += speedY;
   }
   
-  DEBUGRenderGradient(buffer, BlueOffset, GreenOffset);
+  DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
 }

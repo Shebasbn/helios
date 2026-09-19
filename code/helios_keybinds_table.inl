@@ -1,52 +1,17 @@
-#ifndef HS_CONTEXT
-#define HS_CONTEXT(ctx) 
+
+#ifndef X
+#define X(enum, val, str) 
 #endif
 
-#ifndef HS_END_CONTEXT
-#define HS_END_CONTEXT() 
-#endif 
-
-#define RELEASED 0
-#define PRESSED 2
-
-#define ALT_VAL   0b10000000000
-#define CTRL_VAL  0b01000000000
-#define SHIFT_VAL 0b00100000000
-#define N_VAL 0
-
-#ifndef HS_KEYBIND
-#define HS_KEYBIND(mod_name, mod_val, key_name, key_val, command, type) 
+#ifndef MODS
+#define MODS(enum, val) X(enum, val, HS_Stringify(enum)) 
 #endif
 
-HS_CONTEXT(GLOBAL) 
-HS_KEYBIND(N, N_VAL, ESCAPE, VK_ESCAPE, CMD_EXIT, CMD_TYPE_DIGITAL)
-HS_END_CONTEXT()
 
-HS_CONTEXT(MAP_GALAXY) 
-HS_KEYBIND(N, N_VAL, W, 'W', CMD_MOVE_UP, CMD_TYPE_DIGITAL)
-HS_KEYBIND(N, N_VAL, S, 'S', CMD_MOVE_DOWN, CMD_TYPE_DIGITAL)
-HS_KEYBIND(N, N_VAL, A, 'A', CMD_MOVE_LEFT, CMD_TYPE_DIGITAL)
-HS_KEYBIND(N, N_VAL, D, 'D', CMD_MOVE_RIGHT, CMD_TYPE_DIGITAL)
-HS_END_CONTEXT()
-
-#undef ALT_VAL   
-#undef CTRL_VAL
-#undef SHIFT_VAL
-#undef N_VAL
-
-#undef PRESSED
-#undef RELEASED
+MODS(NONE, 0)
+MODS(SHIFT, (1 << 0))
+MODS(CTRL, (1 << 1))
+MODS(ALT, (1 << 2))
 
 
-#ifdef HS_CONTEXT
-#undef HS_CONTEXT
-#endif
-
-#ifdef HS_END_CONTEXT
-#undef HS_END_CONTEXT 
-#endif 
-
-#ifdef HS_KEYBIND
-#undef HS_KEYBIND
-#endif
-
+EVENT_TYPE()

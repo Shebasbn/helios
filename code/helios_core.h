@@ -171,14 +171,27 @@ typedef double   f64;
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Helper Macros
 
+#define HS_Statement(stmnt) do{ stmnt }while(0)
+
+#if HELIOS_WINDOWS
+# define HS_DebugBreak() __debugbreak()
+#else
+# define HS_DebugBreak() (*(volatile int *)0 = 0)
+#endif
+
+#define HS_AssertAlways(condtion) HS_Statement(if(!(condition)){HS_DebugBreak();})  
+
+#if HELIOS_DEBUG 
+# define HS_Assert(condition) HS_Statement(if(!(condition)){HS_DebugBreak();})  
+#else
+# define HS_Assert(condition)
+#endif
+
+
 #define HS_Stringify_(x) #x
 #define HS_Stringify(x) HS_Stringify_(x)
 
-#if HELIOS_DEBUG && HELIOS_MSVC
-# define HS_Assert(expr) __debugbreak() 
-#else
-# define HS_Assert(expr)
-#endif
+
 
 #define HS_ArrayCount(array) sizeof(array) / sizeof(array[0])
 
@@ -188,6 +201,18 @@ typedef double   f64;
 #define HS_ClampBot(a, x) HS_Max(a, x)
 #define HS_Clamp(a, x, b) (((a)>(x))?(a):((b)<(x))?(b):(x))
 
+////////////////////////////////////////////////////////////////
+//~ Sebas: Units 
+
+#define HS_Bytes(n)      (n)
+#define HS_Kilobytes(n)  (n << 10)
+#define HS_Megabytes(n)  (n << 20)
+#define HS_Gigabytes(n)  (((u64)n) << 30)
+#define HS_Terabytes(n)  (((u64)n) << 40)
+
+#define HS_Thousand(n) ((n)*1000)
+#define HS_Million(n)  ((n)*1000000)
+#define HS_Billion(n)  ((n)*1000000000LL)
 
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Helper Functions
