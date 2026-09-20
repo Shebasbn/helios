@@ -5,7 +5,7 @@
 
 #include "helios_math.h"
 
-#if HELIOS_CPP && 0
+#if HELIOS_CPP 
 extern "C"
 {
 #endif
@@ -347,7 +347,7 @@ extern "C"
   
   function void GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* input);
   
-#if HELIOS_CPP && 0
+#if HELIOS_CPP
 }
 #endif
 #endif //HELIOS_PLATFORM_H
