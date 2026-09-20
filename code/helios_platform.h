@@ -316,7 +316,6 @@ extern "C"
       f32 triggerLeft;
       f32 triggerRight;
     };
-    
   };
   
   struct game_input

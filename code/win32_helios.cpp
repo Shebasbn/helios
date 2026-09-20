@@ -22,7 +22,8 @@
 #if defined(_MSC_VER)
 #pragma warning( push, 4 )
 #if HELIOS_DEBUG
-#pragma warning( disable : 4100 4189 4201 4505)
+/*#pragma warning( disable : 4100 4189 4201 4505)*/
+#pragma warning( disable : 4201)
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 #endif
@@ -57,6 +58,8 @@
 typedef X_INPUT_GET_STATE(x_input_get_state); 
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
+  (void)pState;
+  (void)dwUserIndex;
   return 0;
 }
 global x_input_get_state* XInputGetState_ = &XInputGetStateStub;
@@ -67,6 +70,8 @@ global x_input_get_state* XInputGetState_ = &XInputGetStateStub;
 typedef X_INPUT_SET_STATE(x_input_set_state);
 X_INPUT_SET_STATE(XInputSetStateStub)
 {
+  (void)dwUserIndex; 
+  (void)pVibration;
   return 0;
 }
 global x_input_set_state* XInputSetState_ = &XInputSetStateStub;
@@ -355,7 +360,7 @@ Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type,
 //}
 function void  
 Win32ProcessPendingMessages(win32_window* window, 
-                            win32_frame_buffer* buffer, 
+                            /*win32_frame_buffer* buffer,*/ 
                             game_keyboard_input* input)
 {
   MSG message = {};
@@ -456,13 +461,16 @@ Win32MainWindowCallback(HWND    handle,
     } break;
     case WM_EXITSIZEMOVE:
     {
-      window->isResizing = false;
-      win32_dimension client = Win32WindowClientDimensions(window->handle);
-      RECT windowRect = {};
-      GetWindowRect(window->handle, &windowRect);
-      window->width = windowRect.right - windowRect.left;
-      window->height = windowRect.bottom - windowRect.top;
-      Win32ResizeDIBSection(GlobalFrameBuffer, window->handle, client.width, client.height);
+      if(window)
+      {
+        window->isResizing = false;
+        win32_dimension client = Win32WindowClientDimensions(window->handle);
+        RECT windowRect = {};
+        GetWindowRect(window->handle, &windowRect);
+        window->width = windowRect.right - windowRect.left;
+        window->height = windowRect.bottom - windowRect.top;
+        Win32ResizeDIBSection(GlobalFrameBuffer, window->handle, client.width, client.height);
+      }
     } break;
     case WM_CLOSE:
     {
@@ -492,6 +500,7 @@ Win32MainWindowCallback(HWND    handle,
     {
       PAINTSTRUCT paint;
       HDC deviceContext = BeginPaint(handle, &paint);
+      (void)deviceContext;
       win32_dimension clientDim = Win32WindowClientDimensions(handle);
       //DEBUGRenderGradient(&GlobalFrameBuffer);
       //Win32DisplayBufferInWindow(deviceContext, clientDim.width, clientDim.height, &GlobalFrameBuffer);
@@ -585,6 +594,9 @@ Win32WindowCreate(win32_window* outWindow,
 int WINAPI 
 WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
 {
+  (void)prevInstance;
+  (void)commandLine;
+  (void)showCode;
   LARGE_INTEGER counterFrequency;
   QueryPerformanceFrequency(&counterFrequency); 
   s64 perfCountFrequency = counterFrequency.QuadPart;
@@ -638,24 +650,33 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       }
       
       game_input* input = newInput;
-      input->isController = false;
-      Win32ProcessPendingMessages(&window, &frameBuffer, &input->keyboard);
+      newInput->isController = false;
+      Win32ProcessPendingMessages(&window, &input->keyboard);
       
-#if 0
       //~ TODO(Sebas): Should we poll this more frequently
       for(DWORD controllerIndex = 0;
           controllerIndex < XUSER_MAX_COUNT;
           ++controllerIndex)
       {
+        game_controller_input* oldController = &oldInput->controllers[controllerIndex];
+        game_controller_input* newController = &newInput->controllers[controllerIndex];
+        memset(newController, 0, sizeof(game_controller_input));
+        for(u32 buttonIdx = 0;
+            buttonIdx < HS_ArrayCount(newKeyboard->buttons);
+            ++buttonIdx)
+        {
+          newController->buttons[buttonIdx].endedDown = oldController->buttons[buttonIdx].endedDown;
+        };
         XINPUT_STATE controllerState = {};
         if(XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
         {
+          newController->isConnected = true;
           //~ NOTE(Sebas):  This controller is plugged in
           //~ TODO(Sebas): See if controllerState.dwPacketNumber  increments to rapidly
           XINPUT_GAMEPAD* gamePad = &controllerState.Gamepad;
-          b32 dpadUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-          b32 dpadDown = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-          b32 dpadLeft = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+          /*controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+          controllerState->padDown = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+          controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
           b32 dpadRight = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
           b32 buttonStart = (gamePad->wButtons & XINPUT_GAMEPAD_START);
           b32 buttonBack= (gamePad->wButtons & XINPUT_GAMEPAD_BACK);
@@ -669,7 +690,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
           b32 buttonUp = (gamePad->wButtons & XINPUT_GAMEPAD_Y);
           
           f32 triggerLeft  = (gamePad->bLeftTrigger) ? (f32)gamePad->bLeftTrigger / 255.0f : (f32)gamePad->bLeftTrigger;
-          f32 triggerRight = (gamePad->bRightTrigger) ? (f32)gamePad->bRightTrigger / 255.0f : (f32)gamePad->bLeftTrigger;
+          f32 triggerRight = (gamePad->bRightTrigger) ? (f32)gamePad->bRightTrigger / 255.0f : (f32)gamePad->bLeftTrigger;*/
           
           analog_stick stickLeft =  Win32XInputProcessThumbStick((f32)gamePad->sThumbLX, 
                                                                  (f32)gamePad->sThumbLY, 
@@ -678,35 +699,10 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
           analog_stick stickRight = Win32XInputProcessThumbStick((f32)gamePad->sThumbRX, 
                                                                  (f32)gamePad->sThumbRY, 
                                                                  XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-          if(input->IsController)
+          /*if(input->IsController)
           {
-            if(dpadUp)
-            {
-              
-            };
-            /*
-            s16 speedX = 0;
-            s16 speedY = 0;
-            if(dpadRight)
-            {
-              speedX = 1;
-            }
-            if(dpadLeft)
-            {
-              speedX = -1;
-            }
-            if(dpadDown)
-            {
-              speedY = 1;
-            }
-            if(dpadUp)
-            {
-              speedY = -1;
-            }
-            xOffset += speedX;
-              yOffset += speedY;*/
-            break;
-          }
+            
+          }*/
           
         }
         else
@@ -721,7 +717,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       vibration.wRightMotorSpeed = 60000;
       b32 setState = (XInputSetState(0, &vibration) == ERROR_SUCCESS);
 #endif
-#endif
+      
       
       
       GameUpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
@@ -751,6 +747,10 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       char buffer[256];
       sprintf(buffer, "%.02fms/f - %.02ff/s - %.02fmc/f\n", msPerFrame, fps, mcpf);
       OutputDebugString(buffer);
+#else
+      (void)msPerFrame;
+      (void)fps;
+      (void)mcpf;
 #endif
       
       
