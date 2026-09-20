@@ -114,6 +114,93 @@ read_only static win32_window NilWindow = {};
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Win32 Functions
 
+function debug_read_file_result
+DEBUGPlatformReadEntireFile(char* fileName)
+{
+  debug_read_file_result result = {};
+  HANDLE fileHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+  
+  if(fileHandle != INVALID_HANDLE_VALUE)
+  {
+    LARGE_INTEGER fileSize = {};
+    if(GetFileSizeEx(fileHandle, &fileSize))
+    {
+      u32 fileSizeU32 = SafeTruncateU64(fileSize.QuadPart);
+      result.contents = VirtualAlloc(0, fileSizeU32, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+      if(result.contents)
+      {
+        DWORD bytesRead = 0;
+        if(ReadFile(fileHandle, result.contents, fileSizeU32, &bytesRead, 0) &&
+           (fileSizeU32 == bytesRead))
+        {
+          //~ NOTE(Sebas): File Read Successfully
+          result.contentsSize = bytesRead;
+        }
+        else
+        {
+          //~ TODO(Sebas): Logging
+          DEBUGPlatformFreeFileMemory(result.contents);
+          result.contentsSize = 0;
+        }
+      }
+      else
+      {
+        //~ TODO(Sebas): Logging
+      }
+    }
+    else
+    {
+      //~ TODO(Sebas): Logging
+    }
+    
+    CloseHandle(fileHandle);
+  }
+  else
+  {
+    //~ TODO(Sebas): Logging
+    
+  }
+  return result;
+};
+
+function b32  
+DEBUGPlatformWriteEntireFile(char* fileName, u64 memorySize, void* memory)
+{
+  b32 result = false;
+  
+  HANDLE fileHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, OPEN_ALWAYS, 0, 0);
+  
+  if(fileHandle != INVALID_HANDLE_VALUE)
+  {
+    u32 memorySizeU32 = SafeTruncateU64(memorySize);
+    DWORD bytesWritten = 0;
+    if(WriteFile(fileHandle, memory, memorySizeU32, &bytesWritten, 0))
+    {
+      //~ NOTE(Sebas): File Read Successfully
+      result = (memorySizeU32 == bytesWritten);
+    }
+    else
+    {
+      //~ TODO(Sebas): Logging
+    }
+    CloseHandle(fileHandle);
+  }
+  else
+  {
+    //~ TODO(Sebas): Logging
+  }
+  return result;
+}
+
+function void 
+DEBUGPlatformFreeFileMemory(void* memory)
+{
+  if(memory)
+  {
+    VirtualFree(memory, 0, MEM_RELEASE);;
+  }
+};
+
 global win32_frame_buffer* GlobalFrameBuffer;
 
 function win32_dimension 

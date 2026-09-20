@@ -81,4 +81,5 @@ GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* 
   }
   
   DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
+}greenOffset);
 }

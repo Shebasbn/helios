@@ -14,6 +14,18 @@ extern "C"
 * TODO(Sebas): Services that the platform layer provides to the game.
 */
   
+#if HELIOS_DEBUG
+  struct debug_read_file_result
+  {
+    u32 contentsSize;
+    void* contents;
+  };
+  function debug_read_file_result DEBUGPlatformReadEntireFile(char* fileName);
+  function b32  DEBUGPlatformWriteEntireFile(char* fileName, u64 memorySize, void* memory);
+  function void DEBUGPlatformFreeFileMemory(void* memory);
+#else
+#endif
+  
   /**
 * NOTE(Sebas): Services that the game provides to the platform layer.
 */
