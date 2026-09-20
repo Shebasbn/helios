@@ -9,8 +9,7 @@ if "%release%"=="1" set debug=0 && echo [release mode]
 
 set cl_defines= /DHELIOS_DEBUG=1
 
-
-set cl_common=/I..\code\  /nologo /FC /Z7 /WX 
+set cl_common=/I..\code\  /nologo /FC /Z7 /WX
 set cl_opts= %cl_common% /Od %cl_defines% 
 set cl_link_opts= /link /INCREMENTAL:NO /pdbaltpath:%%%%_PDB%%%% 
 if not exist build mkdir build
