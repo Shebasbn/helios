@@ -87,10 +87,14 @@ Win32LoadXInput(void)
   
   HMODULE XInputLibrary = {};
   for(s32 XInputVersionIdx = 0;
-      (!XInputLibrary) && (XInputVersionIdx < HS_ArrayCount(xInputDLLNames));
+      XInputVersionIdx < HS_ArrayCount(xInputDLLNames);
       ++XInputVersionIdx)
   {
     XInputLibrary = LoadLibraryA((char*)xInputDLLNames[XInputVersionIdx].str);
+    if(XInputLibrary)
+    {
+      break;
+    }
   }
   
   if(XInputLibrary)
@@ -241,7 +245,7 @@ Win32CurrentMonitorDimensions(HWND window)
   
   HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
   MONITORINFO monitorInfo = {};
-  monitorInfo.cbSize = sizeof(MONITORINFO );
+  monitorInfo.cbSize = sizeof(MONITORINFO);
   
   if(GetMonitorInfoA(monitor, &monitorInfo))
   {
@@ -250,6 +254,31 @@ Win32CurrentMonitorDimensions(HWND window)
     //s32 workHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
     result.width = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
     result.height = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
+  }
+  return result;
+}
+
+function f32
+win32GetCurrentMonitorRefreshRate(HWND window)
+{
+  f32 result = 0;
+  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  MONITORINFOEXA monitorInfo = {};
+  monitorInfo.cbSize = sizeof(MONITORINFOEXA);
+  
+  if(GetMonitorInfoA(monitor, &monitorInfo))
+  {
+    DEVMODEA devMode = {};
+    devMode.dmSize = sizeof(DEVMODEA);
+    if(EnumDisplaySettingsA(monitorInfo.szDevice, ENUM_CURRENT_SETTINGS,&devMode))
+    {
+      result = (f32)devMode.dmDisplayFrequency;
+      if(result == 0 || result == 1)
+      {
+        HS_Assert(!"Device Default Refresh Rate!");
+        result = 60.0f;
+      }
+    }
   }
   return result;
 }
@@ -413,7 +442,7 @@ Win32ProcessPendingMessages(win32_window* window,
       {
         input->mouseX = (f32)GET_X_LPARAM(message.lParam); 
         input->mouseY = (f32)GET_Y_LPARAM(message.lParam); 
-#if 0
+#if 1
         char strBuffer[256];
         sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
         OutputDebugString(strBuffer);
@@ -494,7 +523,18 @@ Win32MainWindowCallback(HWND    handle,
     } break;
     case WM_ACTIVATEAPP:
     {
-      OutputDebugString("WM_ACTIVATEAPP\n");
+      b32 isActivating =  (b32)wParam;
+      //~ TODO(Sebas):  Transperency when not active app?
+      if(isActivating)
+      {
+        OutputDebugString("Activating Window\n");
+      }
+      else
+      {
+        OutputDebugString("De-Activating Window\n");
+        /*LONG_PTR exStyle = GetWindowLongPtrA(handle, GWL_EXSTYLE);
+        SetWindowLongPtrA(handle, GWL_EXSTYLE, exStyle);*/
+      }
     } break;
     case WM_PAINT:
     {
@@ -526,7 +566,7 @@ Win32WindowCreate(win32_window* outWindow,
   outWindow->instance = (instance) ? instance : GetModuleHandle(0);
   
   outWindow->style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
-  outWindow->exStyle = /*WS_EX_TOPMOST | */WS_EX_APPWINDOW;
+  outWindow->exStyle = WS_EX_TOPMOST | WS_EX_APPWINDOW;
   
   RECT windowRect = {0, 0, width, height};
   if(width != CW_USEDEFAULT || height != CW_USEDEFAULT )
@@ -626,6 +666,9 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   if(window.isRunning)
   {
+    f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window.handle);
+    (void)monitorRefreshRate;
+    
     win32_frame_buffer frameBuffer = {};
     GlobalFrameBuffer = &frameBuffer;
     Win32ResizeDIBSection(&frameBuffer, window.handle, BUFFER_WIDTH, BUFFER_HEIGHT);
@@ -662,7 +705,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         game_controller_input* newController = &newInput->controllers[controllerIndex];
         memset(newController, 0, sizeof(game_controller_input));
         for(u32 buttonIdx = 0;
-            buttonIdx < HS_ArrayCount(newKeyboard->buttons);
+            buttonIdx < HS_ArrayCount(newController->buttons);
             ++buttonIdx)
         {
           newController->buttons[buttonIdx].endedDown = oldController->buttons[buttonIdx].endedDown;
