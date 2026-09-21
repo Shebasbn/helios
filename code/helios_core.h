@@ -214,6 +214,39 @@ typedef double   f64;
 #define HS_Million(n)  ((n)*1000000)
 #define HS_Billion(n)  ((n)*1000000000LL)
 
+read_only global s32 MSPerSecond    = 1000;
+read_only global f64 SecondsPerMS   = 1e-3;
+read_only global s32 TicksPerMS     = 10000;
+read_only global f64 MSPerTick      = 1e-4;
+read_only global s32 TicksPerSecond = 10000000;
+read_only global f64 SecondsPerTick = 1e-7;
+
+read_only global u8 U8Max = 0xFF;
+read_only global u8 U8Min = 0;
+
+read_only global u16 U16Max = 0xFFFF;
+read_only global u16 U16Min = 0;
+
+read_only global u32 U32Max = 0xFFFFFFFF;
+read_only global u32 U32Min = 0;
+
+read_only global u64 U64Max = 0xFFFFFFFFFFFFFFFF;
+read_only global u64 U64Min = 0;
+
+read_only global s8 S8Max = 0x7F;
+read_only global s8 S8Min = -1 - 0x7F;
+
+read_only global s16 S16Max = 0x7FFF;
+read_only global s16 S16Min = -1 - 0x7FFF;
+
+read_only global s32 S32Max = 0x7FFFFFFF;
+read_only global s32 S32Min = -1 - 0x7FFFFFFF;
+
+read_only global s64 S64Max = 0x7FFFFFFFFFFFFFFF;
+read_only global s64 S64Min = -1 - 0x7FFFFFFFFFFFFFFF;
+
+
+
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Helper Functions
 
