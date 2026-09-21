@@ -171,16 +171,29 @@ DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
   return result;
 }
 
+function FILETIME
+Win32GetLastWriteTime(char* fileName)
+{
+  FILETIME result = {};
+  WIN32_FIND_DATAA findData = {};
+  HANDLE fileHandle = FindFirstFileA(fileName, &findData);
+  if(fileHandle != INVALID_HANDLE_VALUE )
+  {
+    result = findData.ftLastWriteTime;
+    FindClose(fileHandle);
+  }
+  return result;
+}
+
 function win32_game_code
-Win32LoadGameCode(void)
+Win32LoadGameCode(char* sourceDLLName, char* tempDLLName)
 {
   win32_game_code result = {};
   
   //~ TODO(Sebas): Need to get the proper path here!
-  // TODO(Sebas): Automatic determination of when updates are necessarry
-  
-  HS_Assert(CopyFile("W:/helios/build/helios.dll","W:/helios/build/helios_temp.dll", FALSE));
-  result.gameCodeDLL = LoadLibraryA("helios_temp.dll");
+  result.dllLastWriteTime = Win32GetLastWriteTime(sourceDLLName);
+  CopyFile(sourceDLLName, tempDLLName, FALSE);
+  result.gameCodeDLL = LoadLibraryA(tempDLLName);
   if(result.gameCodeDLL)
   {
     result.UpdateAndRender = (game_update_and_render*)
@@ -707,7 +720,45 @@ Win32WindowCreate(win32_window* outWindow,
   return result;
 }
 
+function char*
+GetCharOnePastLastSlash(int length, char* string)
+{
+  char* result = 0;
+  
+  result = string;
+  for(int index = 0;
+      index < length;
+      ++index)
+  {
+    if(*string++ == '\\')
+    {
+      result = string;
+    }
+  }
+  return result;
+}
 
+function void
+CatStrings(int sourceACount, char* sourceA, 
+           int sourceBCount, char* sourceB,
+           int destCount, char* dest)
+{
+  HS_Assert(destCount >= sourceACount + sourceBCount);
+  for(int index = 0;
+      index < sourceACount;
+      ++index)
+  {
+    *dest++ = *sourceA++;
+  }
+  
+  for(int index = 0;
+      index < sourceBCount;
+      ++index)
+  {
+    *dest++ = *sourceB++;
+  }
+  *dest++ = 0;
+}
 
 int WINAPI 
 WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
@@ -715,6 +766,28 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   (void)prevInstance;
   (void)commandLine;
   (void)showCode;
+  
+  // NOTE(Sebas): Never Use MAX_PATH in code that is user-facing, because it can be
+  // dangerous and lead to bad results.
+  char exeFileName[MAX_PATH];
+  DWORD sizeOfFileName = GetModuleFileNameA(0, exeFileName, sizeof(exeFileName));
+  
+  char* onePastLastSlash = GetCharOnePastLastSlash(sizeOfFileName, exeFileName);
+  
+  char sourceGameCodeDLLFileName[] = "helios.dll";
+  char sourceGameCodeDLLFullPath[MAX_PATH];
+  
+  CatStrings((u32)(onePastLastSlash - exeFileName), exeFileName, 
+             sizeof(sourceGameCodeDLLFileName) - 1, sourceGameCodeDLLFileName,
+             sizeof(sourceGameCodeDLLFullPath), sourceGameCodeDLLFullPath);
+  
+  char tempGameCodeDLLFileName[] = "helios_temp.dll";
+  char tempGameCodeDLLFullPath[MAX_PATH];
+  
+  CatStrings((u32)(onePastLastSlash - exeFileName), exeFileName, 
+             sizeof(tempGameCodeDLLFileName) - 1, tempGameCodeDLLFileName,
+             sizeof(tempGameCodeDLLFullPath), tempGameCodeDLLFullPath);
+  
   LARGE_INTEGER counterFrequency;
   QueryPerformanceFrequency(&counterFrequency); 
   GlobalPerfCounterFrequency = counterFrequency.QuadPart;
@@ -765,27 +838,17 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     game_input* newInput = &inputs[1];
     
     
-    win32_game_code gameCode = Win32LoadGameCode();
-    s32 loadCount = 0;
+    win32_game_code gameCode = Win32LoadGameCode(sourceGameCodeDLLFullPath, tempGameCodeDLLFullPath);
     
     LARGE_INTEGER lastCounter = Win32GetWallClock();
     u64 lastCycleCount = __rdtsc();
     while(window.isRunning)
     {
-      if(loadCount++ > 120)
+      FILETIME newDLLWriteTime = Win32GetLastWriteTime(sourceGameCodeDLLFullPath);
+      if(CompareFileTime(&newDLLWriteTime, &gameCode.dllLastWriteTime) != 0) 
       {
         Win32UnloadGameCode(&gameCode);
-        loadCount = 0;
-#if HELIOS_DEBUG
-        OutputDebugString("Unloading Game DLL!\n");
-#endif
-      }
-      if(!gameCode.isValid)
-      {
-        gameCode = Win32LoadGameCode();
-#if HELIOS_DEBUG
-        OutputDebugString("Loading Game DLL!\n");
-#endif
+        gameCode = Win32LoadGameCode(sourceGameCodeDLLFullPath, tempGameCodeDLLFullPath);
       }
       
       game_keyboard_input* oldKeyboard = &oldInput->keyboard;

@@ -21,9 +21,9 @@ DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
       u8 red = 0; 
       u8 alpha = 255; 
 #else
-      u8 blue = 0; 
-      u8 green = (u8)(y + yOffset); 
-      u8 red = (u8)(x + xOffset); 
+      u8 blue = (u8)(x + xOffset); 
+      u8 green = 0; 
+      u8 red = (u8)(y + yOffset); 
       u8 alpha = 255; 
 #endif
       

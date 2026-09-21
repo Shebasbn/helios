@@ -46,10 +46,10 @@ struct win32_dimension
   s32 height;
 };
 
-
 struct win32_game_code
 {
   HMODULE gameCodeDLL;
+  FILETIME dllLastWriteTime;
   game_update_and_render* UpdateAndRender;
   
   b32 isValid;
