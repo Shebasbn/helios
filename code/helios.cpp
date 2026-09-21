@@ -76,8 +76,8 @@ GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* 
     {
       speedX = -1;
     }
-    gameState->blueOffset += speedX;
-    gameState->greenOffset += speedY;
+    gameState->blueOffset += speedX * 5;
+    gameState->greenOffset += speedY * 5;
   }
   
   DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
