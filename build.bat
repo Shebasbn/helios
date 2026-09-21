@@ -8,7 +8,7 @@ if "%debug%"=="1"   set release=0 && echo [debug mode]
 if "%release%"=="1" set debug=0 && echo [release mode]
 
 set cl_defines= /DHELIOS_DEBUG=1 /D_HAS_EXCEPTIONS=0
-
+rem /WX
 set cl_common=/I..\code\ /MTd /nologo /FC /Z7 /WX /GR-
 set cl_opts= %cl_common% /Oi %cl_defines% 
 set cl_link_opts= /link /INCREMENTAL:NO /opt:ref /pdbaltpath:%%%%_PDB%%%% 
