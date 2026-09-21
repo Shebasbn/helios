@@ -142,6 +142,14 @@ Win32HighResolutionSleep(HANDLE timer, s64 dueTimeTicks)
   }
 }
 
+function inline LARGE_INTEGER
+Win32GetWallClock(void)
+{
+  LARGE_INTEGER result = {};
+  QueryPerformanceCounter(&result);
+  return result;
+}
+
 function inline s64
 Win32GetTicksElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
 {
@@ -701,7 +709,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   {
     HANDLE highResolutionTimer = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window.handle);
-    f32 targetFrameTimeSeconds = 1.0f / 60;
+    f32 targetFrameTimeSeconds = 1.0f / monitorRefreshRate;
     s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
     (void)monitorRefreshRate;
@@ -714,8 +722,8 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     game_input* oldInput = &inputs[0];
     game_input* newInput = &inputs[1];
     
-    LARGE_INTEGER lastCounter;
-    QueryPerformanceCounter(&lastCounter);
+    LARGE_INTEGER lastCounter = Win32GetWallClock();
+    
     u64 lastCycleCount = __rdtsc();
     while(window.isRunning)
     {
@@ -726,7 +734,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
           buttonIdx < HS_ArrayCount(newKeyboard->buttons);
           ++buttonIdx)
       {
-        newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx++].endedDown;
+        newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx].endedDown;
       }
       
       game_input* input = newInput;
@@ -799,20 +807,18 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       b32 setState = (XInputSetState(0, &vibration) == ERROR_SUCCESS);
 #endif
       
-#if HELIOS_DEBUG
-      LARGE_INTEGER renderStartCounter = {};
-      LARGE_INTEGER renderEndCounter = {};
-      QueryPerformanceCounter(&renderStartCounter);
-#endif
+      
       GameUpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
       
+#if HELIOS_DEBUG
+      LARGE_INTEGER renderStartCounter = Win32GetWallClock();
+#endif
       win32_dimension clientDim = Win32WindowClientDimensions(window.handle);
       HDC deviceContext = GetDC(window.handle);
       Win32DisplayBufferInWindow(deviceContext, clientDim.width, clientDim.height, &frameBuffer);
       ReleaseDC(window.handle, deviceContext);
-      
 #if HELIOS_DEBUG
-      QueryPerformanceCounter(&renderEndCounter);
+      LARGE_INTEGER renderEndCounter = Win32GetWallClock();
       s64 renderTicksElapsed = Win32GetTicksElapsed(renderStartCounter, renderEndCounter);
 #endif
       
@@ -821,8 +827,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       oldInput = temp;
       
       
-      LARGE_INTEGER workCounter = {};
-      QueryPerformanceCounter(&workCounter);
+      LARGE_INTEGER workCounter = Win32GetWallClock();
       s64 workTicksElapsed = Win32GetTicksElapsed(lastCounter, workCounter);
       s64 ticksElapsed = workTicksElapsed;
       s64 ticksToWait = targetTicksPerFrame - ticksElapsed; 
@@ -838,13 +843,13 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         }
         do
         {
-          QueryPerformanceCounter(&endCounter);
+          endCounter = Win32GetWallClock();
           ticksElapsed = Win32GetTicksElapsed(lastCounter, endCounter);
         }while(ticksElapsed < targetTicksPerFrame);
       }
       else
       {
-        HS_Assert((ticksElapsed > (targetTicksPerFrame * 2)) && "Frame time was longer than target!");
+        //HS_Assert(ticksElapsed > (targetTicksPerFrame * 2));
       }
       
       
