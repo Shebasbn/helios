@@ -24,7 +24,6 @@
 #if HELIOS_DEBUG
 /*#pragma warning( disable : 4100 4189 4201 4505)*/
 #pragma warning( disable : 4201 4505)
-#define _CRT_SECURE_NO_WARNINGS
 #endif
 #endif
 
@@ -33,8 +32,6 @@
 #include "helios_string.h"
 
 #include "helios_math.h"
-
-#include "helios.cpp"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0) // Save current warning state and turn off all warnings
@@ -51,6 +48,18 @@
 #endif
 
 #include "win32_helios.h"
+////////////////////////////////////////////////////////////////
+//~ Sebas: Win32 Types
+
+#define BORDERLESS_FULLSCREEN WS_POPUP | WS_VISIBLE
+#define FIXED_WINDOWED WS_OVERLAPPEDWINDOW ^ (WS_THICKFRAME | WS_MAXIMIZEBOX)
+#define RESIZABLE_WINDOWED WS_OVERLAPPEDWINDOW | WS_VISIBLE
+
+
+read_only static win32_window NilWindow = {};
+
+global s64 GlobalPerfCounterFrequency;
+global f32 GlobalPerfCounterFrequencyTicks;
 
 
 //~ NOTE(Sebas):  XInputGetState
@@ -77,95 +86,16 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 global x_input_set_state* XInputSetState_ = &XInputSetStateStub;
 #define XInputSetState XInputSetState_
 
-function void
-Win32LoadXInput(void)
+
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
 {
-  string8 xInputDLLNames[] =
+  if(memory)
   {
-    Str8Lit("xinput1_4.dll"), Str8Lit("xinput1_3.dll"), Str8Lit("xinput9_1_0.dll")
-  };
-  
-  HMODULE XInputLibrary = {};
-  for(s32 XInputVersionIdx = 0;
-      XInputVersionIdx < HS_ArrayCount(xInputDLLNames);
-      ++XInputVersionIdx)
-  {
-    XInputLibrary = LoadLibraryA((char*)xInputDLLNames[XInputVersionIdx].str);
-    if(XInputLibrary)
-    {
-      break;
-    }
+    VirtualFree(memory, 0, MEM_RELEASE);;
   }
-  
-  if(XInputLibrary)
-  {
-    XInputGetState = ( x_input_get_state*)GetProcAddress(XInputLibrary, "XInputGetState");
-    XInputSetState = ( x_input_set_state*)GetProcAddress(XInputLibrary, "XInputSetState");
-  }
-  else
-  {
-    XInputGetState = &XInputGetStateStub;
-    XInputSetState = &XInputSetStateStub;
-  }
-}
+};
 
-
-////////////////////////////////////////////////////////////////
-//~ Sebas: Win32 Types
-
-#define BORDERLESS_FULLSCREEN WS_POPUP | WS_VISIBLE
-#define FIXED_WINDOWED WS_OVERLAPPEDWINDOW ^ (WS_THICKFRAME | WS_MAXIMIZEBOX)
-#define RESIZABLE_WINDOWED WS_OVERLAPPEDWINDOW | WS_VISIBLE
-
-
-read_only static win32_window NilWindow = {};
-
-global s64 GlobalPerfCounterFrequency;
-global f32 GlobalPerfCounterFrequencyTicks;
-////////////////////////////////////////////////////////////////
-//~ Sebas: Win32 Functions
-
-function void
-Win32HighResolutionSleep(HANDLE timer, s64 dueTimeTicks)
-{
-  if(timer)
-  {
-    LARGE_INTEGER waitTime;
-    waitTime.QuadPart = -(dueTimeTicks);
-    SetWaitableTimer(timer, &waitTime, 0, 0, 0, false);
-    WaitForSingleObject(timer, INFINITE);
-  }
-  else
-  {
-    //~ TODO(Sebas): Log
-    HS_Assert(!"Invalid Timer!");
-  }
-}
-
-function inline LARGE_INTEGER
-Win32GetWallClock(void)
-{
-  LARGE_INTEGER result = {};
-  QueryPerformanceCounter(&result);
-  return result;
-}
-
-function inline s64
-Win32GetTicksElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
-{
-  s64 result = (s64)RoundF64((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequencyTicks);
-  return result;
-}
-
-function inline f32 
-Win32GetSecondsElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
-{
-  f32 result = (f32)((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequency);
-  return result;
-}
-
-function debug_read_file_result
-DEBUGPlatformReadEntireFile(char* fileName)
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 {
   debug_read_file_result result = {};
   HANDLE fileHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
@@ -213,8 +143,7 @@ DEBUGPlatformReadEntireFile(char* fileName)
   return result;
 };
 
-function b32  
-DEBUGPlatformWriteEntireFile(char* fileName, u64 memorySize, void* memory)
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
 {
   b32 result = false;
   
@@ -242,16 +171,124 @@ DEBUGPlatformWriteEntireFile(char* fileName, u64 memorySize, void* memory)
   return result;
 }
 
-function void 
-DEBUGPlatformFreeFileMemory(void* memory)
+function win32_game_code
+Win32LoadGameCode(void)
 {
-  if(memory)
+  win32_game_code result = {};
+  
+  //~ TODO(Sebas): Need to get the proper path here!
+  // TODO(Sebas): Automatic determination of when updates are necessarry
+  
+  HS_Assert(CopyFile("W:/helios/build/helios.dll","W:/helios/build/helios_temp.dll", FALSE));
+  result.gameCodeDLL = LoadLibraryA("helios_temp.dll");
+  if(result.gameCodeDLL)
   {
-    VirtualFree(memory, 0, MEM_RELEASE);;
+    result.UpdateAndRender = (game_update_and_render*)
+      GetProcAddress(result.gameCodeDLL, "GameUpdateAndRender");
+    
+    result.isValid = result.UpdateAndRender != 0;
   }
-};
+  else
+  {
+    DWORD errorCode = GetLastError();
+    (void)errorCode;
+  }
+  
+  if(!result.isValid)
+  {
+    result.UpdateAndRender = &GameUpdateAndRenderStub;
+  }
+  return result;
+}
 
-global win32_frame_buffer* GlobalFrameBuffer;
+function void
+Win32UnloadGameCode(win32_game_code* gameCode)
+{
+  if(gameCode->gameCodeDLL)
+  {
+    FreeLibrary(gameCode->gameCodeDLL);
+    gameCode->gameCodeDLL = 0;
+  }
+  gameCode->isValid = false;
+  gameCode->UpdateAndRender = &GameUpdateAndRenderStub;
+  
+}
+
+function void
+Win32LoadXInput(void)
+{
+  string8 xInputDLLNames[] =
+  {
+    Str8Lit("xinput1_4.dll"), Str8Lit("xinput1_3.dll"), Str8Lit("xinput9_1_0.dll")
+  };
+  
+  HMODULE XInputLibrary = {};
+  for(s32 XInputVersionIdx = 0;
+      XInputVersionIdx < HS_ArrayCount(xInputDLLNames);
+      ++XInputVersionIdx)
+  {
+    XInputLibrary = LoadLibraryA((char*)xInputDLLNames[XInputVersionIdx].str);
+    if(XInputLibrary)
+    {
+      break;
+    }
+  }
+  
+  if(XInputLibrary)
+  {
+    XInputGetState = (x_input_get_state*)GetProcAddress(XInputLibrary, "XInputGetState");
+    XInputSetState = (x_input_set_state*)GetProcAddress(XInputLibrary, "XInputSetState");
+  }
+  else
+  {
+    XInputGetState = &XInputGetStateStub;
+    XInputSetState = &XInputSetStateStub;
+  }
+}
+
+////////////////////////////////////////////////////////////////
+//~ Sebas: Win32 Functions
+
+function void
+Win32HighResolutionSleep(HANDLE timer, s64 dueTimeTicks)
+{
+  if(timer)
+  {
+    LARGE_INTEGER waitTime;
+    waitTime.QuadPart = -(dueTimeTicks);
+    SetWaitableTimer(timer, &waitTime, 0, 0, 0, false);
+    WaitForSingleObject(timer, INFINITE);
+  }
+  else
+  {
+    //~ TODO(Sebas): Log
+    HS_Assert(!"Invalid Timer!");
+  }
+}
+
+function inline LARGE_INTEGER
+Win32GetWallClock(void)
+{
+  LARGE_INTEGER result = {};
+  QueryPerformanceCounter(&result);
+  return result;
+}
+
+function inline s64
+Win32GetTicksElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  s64 result = (s64)RoundF64((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequencyTicks);
+  return result;
+}
+
+function inline f32 
+Win32GetSecondsElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  f32 result = (f32)((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequency);
+  return result;
+}
+
+global win32_window* GlobalWindow;
 
 function win32_dimension 
 Win32WindowClientDimensions(HWND window)
@@ -512,7 +549,7 @@ Win32MainWindowCallback(HWND    handle,
                         LPARAM  lParam)
 {
   LRESULT result = {};
-  local_persist win32_window* window;
+  win32_window* window = GlobalWindow;;
   switch(message)
   {
     case WM_SIZE:
@@ -539,7 +576,7 @@ Win32MainWindowCallback(HWND    handle,
         GetWindowRect(window->handle, &windowRect);
         window->width = windowRect.right - windowRect.left;
         window->height = windowRect.bottom - windowRect.top;
-        Win32ResizeDIBSection(GlobalFrameBuffer, window->handle, client.width, client.height);
+        Win32ResizeDIBSection(window->frameBuffer, window->handle, client.width, client.height);
       }
     } break;
     case WM_CLOSE:
@@ -551,10 +588,10 @@ Win32MainWindowCallback(HWND    handle,
     } break;
     case WM_CREATE: 
     { 
-      window = 0;
+      /*window = 0;
       OutputDebugString("WM_CREATE\n"); 
       CREATESTRUCT* statePtr = (CREATESTRUCT*)lParam;
-      window = (win32_window*)statePtr->lpCreateParams;
+      window = (win32_window*)statePtr->lpCreateParams;*/
     } break;
     case WM_DESTROY: 
     {
@@ -682,17 +719,22 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   QueryPerformanceFrequency(&counterFrequency); 
   GlobalPerfCounterFrequency = counterFrequency.QuadPart;
   GlobalPerfCounterFrequencyTicks = (f32)(counterFrequency.QuadPart * SecondsPerTick);
+  
   Win32LoadXInput();
   
   win32_window window = {}; 
+  GlobalWindow = &window;
   
+  game_memory gameMemory = {};
 #if HELIOS_DEBUG
   LPVOID baseAddress = (LPVOID)HS_Terabytes(2);
+  gameMemory.DEBUGPlatformReadEntireFile = &DEBUGPlatformReadEntireFile;
+  gameMemory.DEBUGPlatformWriteEntireFile = &DEBUGPlatformWriteEntireFile;
+  gameMemory.DEBUGPlatformFreeFileMemory = &DEBUGPlatformFreeFileMemory;
 #else
   LPVOID baseAddress = 0;
 #endif
   
-  game_memory gameMemory = {};
   gameMemory.permanentMemorySize = HS_Megabytes(64);
   gameMemory.transientMemorySize = HS_Gigabytes(4);
   u64 totalSize = gameMemory.permanentMemorySize + gameMemory.transientMemorySize;
@@ -715,18 +757,37 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     (void)monitorRefreshRate;
     
     win32_frame_buffer frameBuffer = {};
-    GlobalFrameBuffer = &frameBuffer;
+    window.frameBuffer = &frameBuffer;
     Win32ResizeDIBSection(&frameBuffer, window.handle, BUFFER_WIDTH, BUFFER_HEIGHT);
     
     game_input inputs[2] = {};
     game_input* oldInput = &inputs[0];
     game_input* newInput = &inputs[1];
     
-    LARGE_INTEGER lastCounter = Win32GetWallClock();
     
+    win32_game_code gameCode = Win32LoadGameCode();
+    s32 loadCount = 0;
+    
+    LARGE_INTEGER lastCounter = Win32GetWallClock();
     u64 lastCycleCount = __rdtsc();
     while(window.isRunning)
     {
+      if(loadCount++ > 120)
+      {
+        Win32UnloadGameCode(&gameCode);
+        loadCount = 0;
+#if HELIOS_DEBUG
+        OutputDebugString("Unloading Game DLL!\n");
+#endif
+      }
+      if(!gameCode.isValid)
+      {
+        gameCode = Win32LoadGameCode();
+#if HELIOS_DEBUG
+        OutputDebugString("Loading Game DLL!\n");
+#endif
+      }
+      
       game_keyboard_input* oldKeyboard = &oldInput->keyboard;
       game_keyboard_input* newKeyboard = &newInput->keyboard;
       memset(newKeyboard, 0, sizeof(game_keyboard_input));
@@ -808,7 +869,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
 #endif
       
       
-      GameUpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
+      gameCode.UpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
       
 #if HELIOS_DEBUG
       LARGE_INTEGER renderStartCounter = Win32GetWallClock();

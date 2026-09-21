@@ -15,10 +15,17 @@ DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
         x < buffer->width;
         ++x)
     {
+#if 1
       u8 blue = (u8)(x + xOffset); 
       u8 green = (u8)(y + yOffset); 
       u8 red = 0; 
       u8 alpha = 255; 
+#else
+      u8 blue = 0; 
+      u8 green = (u8)(y + yOffset); 
+      u8 red = (u8)(x + xOffset); 
+      u8 alpha = 255; 
+#endif
       
       *pixel = alpha << 24 | red << 16 | green << 8 | blue; // red
       ++pixel;
@@ -27,8 +34,7 @@ DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
   }
 }
 
-function void 
-GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* inputState)
+GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   HS_Assert(sizeof(game_state) <= memory->permanentMemorySize);
   game_state* gameState = (game_state*)memory->permanentMemory;
@@ -36,11 +42,11 @@ GameUpdateAndRender(game_memory* memory, game_frame_buffer* buffer, game_input* 
   {
     char* filename = __FILE__;
     
-    debug_read_file_result file = DEBUGPlatformReadEntireFile(filename);
+    debug_read_file_result file = memory->DEBUGPlatformReadEntireFile(filename);
     if(file.contents)
     {
-      DEBUGPlatformWriteEntireFile("test.out", file.contentsSize, file.contents);
-      DEBUGPlatformFreeFileMemory(file.contents);
+      memory->DEBUGPlatformWriteEntireFile("test.out", file.contentsSize, file.contents);
+      memory->DEBUGPlatformFreeFileMemory(file.contents);
       file.contents = 0;
       file.contentsSize = 0;
     }

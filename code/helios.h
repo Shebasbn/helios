@@ -3,6 +3,8 @@
 #ifndef HELIOS_H
 #define HELIOS_H
 
+#define GAME_EXPORT no_name_mangle
+
 struct game_state
 {
   s32 blueOffset;

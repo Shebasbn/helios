@@ -68,9 +68,9 @@
 //~ Sebas: Language Dectection
 
 #if defined(__cplusplus)
-# define HL_LANG_CPP 1
+# define HELIOS_CPP 1
 #else
-# define HL_LANG_C 1
+# define HELIOS_C 1
 #endif
 
 //~ Sebas: Zero Definitions
@@ -136,8 +136,6 @@
 #else
 # define no_name_mangle
 #endif
-
-#define root_function no_name_mangle
 
 #if HELIOS_MSVC || (HELIOS_CLANG && HELIOS_WINDOWS)
 # pragma section(".rdata$", read)
