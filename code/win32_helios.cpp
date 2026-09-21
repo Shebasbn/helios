@@ -23,7 +23,7 @@
 #pragma warning( push, 4 )
 #if HELIOS_DEBUG
 /*#pragma warning( disable : 4100 4189 4201 4505)*/
-#pragma warning( disable : 4201)
+#pragma warning( disable : 4201 4505)
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 #endif
@@ -120,8 +120,41 @@ Win32LoadXInput(void)
 
 read_only static win32_window NilWindow = {};
 
+global s64 GlobalPerfCounterFrequency;
+global f32 GlobalPerfCounterFrequencyTicks;
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Win32 Functions
+
+function void
+Win32HighResolutionSleep(HANDLE timer, s64 dueTimeTicks)
+{
+  if(timer)
+  {
+    LARGE_INTEGER waitTime;
+    waitTime.QuadPart = -(dueTimeTicks);
+    SetWaitableTimer(timer, &waitTime, 0, 0, 0, false);
+    WaitForSingleObject(timer, INFINITE);
+  }
+  else
+  {
+    //~ TODO(Sebas): Log
+    HS_Assert(!"Invalid Timer!");
+  }
+}
+
+function inline s64
+Win32GetTicksElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  s64 result = (s64)RoundF64((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequencyTicks);
+  return result;
+}
+
+function inline f32 
+Win32GetSecondsElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  f32 result = (f32)((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequency);
+  return result;
+}
 
 function debug_read_file_result
 DEBUGPlatformReadEntireFile(char* fileName)
@@ -442,7 +475,7 @@ Win32ProcessPendingMessages(win32_window* window,
       {
         input->mouseX = (f32)GET_X_LPARAM(message.lParam); 
         input->mouseY = (f32)GET_Y_LPARAM(message.lParam); 
-#if 1
+#if 0
         char strBuffer[256];
         sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
         OutputDebugString(strBuffer);
@@ -639,8 +672,8 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   (void)showCode;
   LARGE_INTEGER counterFrequency;
   QueryPerformanceFrequency(&counterFrequency); 
-  s64 perfCountFrequency = counterFrequency.QuadPart;
-  
+  GlobalPerfCounterFrequency = counterFrequency.QuadPart;
+  GlobalPerfCounterFrequencyTicks = (f32)(counterFrequency.QuadPart * SecondsPerTick);
   Win32LoadXInput();
   
   win32_window window = {}; 
@@ -666,7 +699,11 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   if(window.isRunning)
   {
+    HANDLE highResolutionTimer = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window.handle);
+    f32 targetFrameTimeSeconds = 1.0f / 60;
+    s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
+    
     (void)monitorRefreshRate;
     
     win32_frame_buffer frameBuffer = {};
@@ -689,13 +726,14 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
           buttonIdx < HS_ArrayCount(newKeyboard->buttons);
           ++buttonIdx)
       {
-        newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx].endedDown;
+        newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx++].endedDown;
       }
       
       game_input* input = newInput;
       newInput->isController = false;
       Win32ProcessPendingMessages(&window, &input->keyboard);
       
+#if 0
       //~ TODO(Sebas): Should we poll this more frequently
       for(DWORD controllerIndex = 0;
           controllerIndex < XUSER_MAX_COUNT;
@@ -754,15 +792,18 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         }
       }
       
-#if 0
+      
       XINPUT_VIBRATION vibration = {};
       vibration.wLeftMotorSpeed =  60000;
       vibration.wRightMotorSpeed = 60000;
       b32 setState = (XInputSetState(0, &vibration) == ERROR_SUCCESS);
 #endif
       
-      
-      
+#if HELIOS_DEBUG
+      LARGE_INTEGER renderStartCounter = {};
+      LARGE_INTEGER renderEndCounter = {};
+      QueryPerformanceCounter(&renderStartCounter);
+#endif
       GameUpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
       
       win32_dimension clientDim = Win32WindowClientDimensions(window.handle);
@@ -770,27 +811,64 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       Win32DisplayBufferInWindow(deviceContext, clientDim.width, clientDim.height, &frameBuffer);
       ReleaseDC(window.handle, deviceContext);
       
-      
+#if HELIOS_DEBUG
+      QueryPerformanceCounter(&renderEndCounter);
+      s64 renderTicksElapsed = Win32GetTicksElapsed(renderStartCounter, renderEndCounter);
+#endif
       
       game_input* temp = newInput;
       newInput = oldInput;
       oldInput = temp;
       
-      u64 endCycleCount = __rdtsc();
-      LARGE_INTEGER endCounter;
-      QueryPerformanceCounter(&endCounter);
       
+      LARGE_INTEGER workCounter = {};
+      QueryPerformanceCounter(&workCounter);
+      s64 workTicksElapsed = Win32GetTicksElapsed(lastCounter, workCounter);
+      s64 ticksElapsed = workTicksElapsed;
+      s64 ticksToWait = targetTicksPerFrame - ticksElapsed; 
+      
+      LARGE_INTEGER endCounter = workCounter;
+      if(ticksToWait > 0 && ticksToWait <= S64Max)
+      {
+        f32 bufferZoneMS = 1.5f;
+        s64 sleepTicksBufferZone = (s64)RoundF32(bufferZoneMS * TicksPerMS);
+        if(ticksToWait > sleepTicksBufferZone)
+        {
+          Win32HighResolutionSleep(highResolutionTimer, ticksToWait - sleepTicksBufferZone);
+        }
+        do
+        {
+          QueryPerformanceCounter(&endCounter);
+          ticksElapsed = Win32GetTicksElapsed(lastCounter, endCounter);
+        }while(ticksElapsed < targetTicksPerFrame);
+      }
+      else
+      {
+        HS_Assert((ticksElapsed > (targetTicksPerFrame * 2)) && "Frame time was longer than target!");
+      }
+      
+      
+      u64 endCycleCount = __rdtsc();
       u64 cyclesElapsed = endCycleCount - lastCycleCount;
-      s64 counterElapsed = endCounter.QuadPart - lastCounter.QuadPart;
-      f32 msPerFrame = ((f32)(counterElapsed * 1000.0f) / (f32)perfCountFrequency);
-      f32 fps = ((f32)perfCountFrequency / (f32)counterElapsed);
+      
+#if HELIOS_DEBUG && 1
+      f32 totalMSPerFrame = (f32)(ticksElapsed * MSPerTick);
+      f32 workMSPerFrame = (f32)(workTicksElapsed * MSPerTick);
+      f32 renderMSPerFrame = (f32)(renderTicksElapsed * MSPerTick);
+      f32 waitMSPerFrame = (f32)(ticksToWait * MSPerTick);
+      f32 fps = (f32)(1.0f / (ticksElapsed * SecondsPerTick));
       f32 mcpf = ((f32)cyclesElapsed / (1000.0f * 1000.0f));
       
-#if 0
+      (void)fps;
+      (void)mcpf;
+      
       char buffer[256];
-      sprintf(buffer, "%.02fms/f - %.02ff/s - %.02fmc/f\n", msPerFrame, fps, mcpf);
+      sprintf(buffer, "%.02fms/f = Work:%.02fms/f, Render:%.02fms/f  + Wait:%.02fms/f\n", totalMSPerFrame, workMSPerFrame,renderMSPerFrame, waitMSPerFrame);
       OutputDebugString(buffer);
 #else
+      char buffer[256];
+      sprintf(buffer, "%.02fms/f vs %.02fms/f - %.02ff/s - %.02fmc/f\n", totalMSPerFrame, targetFrameTimeSeconds * 1000, fps, mcpf);
+      OutputDebugString(buffer);
       (void)msPerFrame;
       (void)fps;
       (void)mcpf;
@@ -801,6 +879,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       lastCycleCount = endCycleCount;
       
     }
+    CloseHandle(highResolutionTimer);
   }
   return 0;
 }
