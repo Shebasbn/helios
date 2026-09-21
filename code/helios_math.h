@@ -19,6 +19,18 @@ function inline f64 SqrtF64(f64 x)
   return sqrt(x);
 }
 
+function inline f32 RoundF32(f32 x)
+{
+  f32 result = roundf(x);
+  return result;
+}
+
+function inline f64 RoundF64(f64 x)
+{
+  f64 result = round(x);
+  return result;
+}
+
 struct vec2
 {
   f32 x;
