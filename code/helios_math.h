@@ -31,6 +31,18 @@ function inline f64 RoundF64(f64 x)
   return result;
 }
 
+function inline s32 AbsS32(s32 n)
+{
+  s32 result = abs(n);
+  return result;
+}
+
+function inline s32 ModS32(s32 a, s32 b)
+{
+  s32 result = a % b;
+  return result < 0 ? result + AbsS32(b) : result; 
+}
+
 struct vec2
 {
   f32 x;
