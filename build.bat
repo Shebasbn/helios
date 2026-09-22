@@ -21,7 +21,7 @@ if not exist build mkdir build
 rem del /f /q "build\*.pdb" 2>nul
 
 rem cl %cl_opts% /P /Fi"build/" code/helios.cpp
-cl %cl_opts% %HeliosDLLOutDirs% code/helios.cpp /LD /link /NOENTRY /PDB:"build/helios_dll.pdb" %cl_link_opts% %HeliosDLLExports%  
+cl %cl_opts% %HeliosDLLOutDirs% code/helios.cpp /LD /link /NOENTRY /PDB:"build/helios_dll.pdb" %cl_link_opts% %HeliosDLLExports% ucrt.lib  
 
 rem cl %cl_opts% /P /Fi"build/" code/win32_helios.cpp
 cl %cl_opts% %HeliosEXEOutDirs% code/win32_helios.cpp  /link /PDB:"build/win32_helios.pdb" %cl_link_opts% user32.lib gdi32.lib 
