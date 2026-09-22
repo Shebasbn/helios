@@ -70,6 +70,7 @@ extern "C"
     f32 mouseX;
     f32 mouseY;
     game_input_modifiers currentModifiers;
+    b32 isProcessed;
   };
   
   struct game_button_state
@@ -83,6 +84,8 @@ extern "C"
     f32 mouseX;
     f32 mouseY;
     game_button_state buttons[256];
+    
+    game_input_modifiers currentModifiers;
     
     u32 eventCount;
     game_input_event events[MAX_FRAME_EVENTS];
