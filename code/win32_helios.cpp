@@ -533,7 +533,7 @@ Win32ProcessPendingMessages(win32_window* window,
       {
         input->mouseX = (f32)GET_X_LPARAM(message.lParam); 
         input->mouseY = (f32)GET_Y_LPARAM(message.lParam); 
-#if 0
+#if 1
         char strBuffer[256];
         sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
         OutputDebugString(strBuffer);
@@ -853,13 +853,16 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       
       game_keyboard_input* oldKeyboard = &oldInput->keyboard;
       game_keyboard_input* newKeyboard = &newInput->keyboard;
-      memset(newKeyboard, 0, sizeof(game_keyboard_input));
+      memcpy(newKeyboard, oldKeyboard, sizeof(game_keyboard_input));
       for(u32 buttonIdx = 0;
           buttonIdx < HS_ArrayCount(newKeyboard->buttons);
           ++buttonIdx)
       {
-        newKeyboard->buttons[buttonIdx].endedDown = oldKeyboard->buttons[buttonIdx].endedDown;
+        newKeyboard->buttons[buttonIdx].transitionCount = 0;
       }
+      
+      newKeyboard->eventCount = 0;
+      newKeyboard->textLength = 0;
       
       game_input* input = newInput;
       newInput->isController = false;
@@ -980,7 +983,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       u64 endCycleCount = __rdtsc();
       u64 cyclesElapsed = endCycleCount - lastCycleCount;
       
-#if HELIOS_DEBUG && 1
+#if HELIOS_DEBUG && 0
       f32 totalMSPerFrame = (f32)(ticksElapsed * MSPerTick);
       f32 workMSPerFrame = (f32)(workTicksElapsed * MSPerTick);
       f32 renderMSPerFrame = (f32)(renderTicksElapsed * MSPerTick);
@@ -994,15 +997,14 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       char buffer[256];
       sprintf(buffer, "%.02fms/f = Work:%.02fms/f, Render:%.02fms/f  + Wait:%.02fms/f\n", totalMSPerFrame, workMSPerFrame,renderMSPerFrame, waitMSPerFrame);
       OutputDebugString(buffer);
-#else
+#elif 0
       char buffer[256];
       sprintf(buffer, "%.02fms/f vs %.02fms/f - %.02ff/s - %.02fmc/f\n", totalMSPerFrame, targetFrameTimeSeconds * 1000, fps, mcpf);
       OutputDebugString(buffer);
-      (void)msPerFrame;
-      (void)fps;
-      (void)mcpf;
+#else
+      (void)cyclesElapsed;
+      (void)renderTicksElapsed;
 #endif
-      
       
       lastCounter = endCounter;
       lastCycleCount = endCycleCount;
