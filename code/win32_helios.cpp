@@ -467,6 +467,7 @@ Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type,
     event->mouseX = mouseX;
     event->mouseY = mouseY;
     event->currentModifiers = mods;
+    event->isProcessed = false;
   }
   else
   {
@@ -478,6 +479,77 @@ Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type,
 //{
 //
 //}
+
+function void
+Win32PollXInputControllers()
+{
+#if 0
+  //~ TODO(Sebas): Should we poll this more frequently
+  for(DWORD controllerIndex = 0;
+      controllerIndex < XUSER_MAX_COUNT;
+      ++controllerIndex)
+  {
+    game_controller_input* oldController = &oldInput->controllers[controllerIndex];
+    game_controller_input* newController = &newInput->controllers[controllerIndex];
+    memset(newController, 0, sizeof(game_controller_input));
+    for(u32 buttonIdx = 0;
+        buttonIdx < HS_ArrayCount(newController->buttons);
+        ++buttonIdx)
+    {
+      newController->buttons[buttonIdx].endedDown = oldController->buttons[buttonIdx].endedDown;
+    };
+    XINPUT_STATE controllerState = {};
+    if(XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
+    {
+      newController->isConnected = true;
+      //~ NOTE(Sebas):  This controller is plugged in
+      //~ TODO(Sebas): See if controllerState.dwPacketNumber  increments to rapidly
+      XINPUT_GAMEPAD* gamePad = &controllerState.Gamepad;
+      /*controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+      controllerState->padDown = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+      controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+      b32 dpadRight = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+      b32 buttonStart = (gamePad->wButtons & XINPUT_GAMEPAD_START);
+      b32 buttonBack= (gamePad->wButtons & XINPUT_GAMEPAD_BACK);
+      b32 thumbButtonLeft = (gamePad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
+      b32 thumbButtonRight = (gamePad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
+      b32 shoulderLeft = (gamePad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+      b32 shoulderRight = (gamePad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+      b32 buttonDown = (gamePad->wButtons & XINPUT_GAMEPAD_A);
+      b32 buttonRight = (gamePad->wButtons & XINPUT_GAMEPAD_B);
+      b32 buttonLeft = (gamePad->wButtons & XINPUT_GAMEPAD_X);
+      b32 buttonUp = (gamePad->wButtons & XINPUT_GAMEPAD_Y);
+      
+      f32 triggerLeft  = (gamePad->bLeftTrigger) ? (f32)gamePad->bLeftTrigger / 255.0f : (f32)gamePad->bLeftTrigger;
+      f32 triggerRight = (gamePad->bRightTrigger) ? (f32)gamePad->bRightTrigger / 255.0f : (f32)gamePad->bLeftTrigger;*/
+      
+      analog_stick stickLeft =  Win32XInputProcessThumbStick((f32)gamePad->sThumbLX, 
+                                                             (f32)gamePad->sThumbLY, 
+                                                             XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+      
+      analog_stick stickRight = Win32XInputProcessThumbStick((f32)gamePad->sThumbRX, 
+                                                             (f32)gamePad->sThumbRY, 
+                                                             XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+      /*if(input->IsController)
+      {
+        
+      }*/
+      
+    }
+    else
+    {
+      //~ NOTE(Sebas): The controller is not available
+    }
+  }
+  
+  
+  XINPUT_VIBRATION vibration = {};
+  vibration.wLeftMotorSpeed =  60000;
+  vibration.wRightMotorSpeed = 60000;
+  b32 setState = (XInputSetState(0, &vibration) == ERROR_SUCCESS);
+#endif
+}
+
 function void  
 Win32ProcessPendingMessages(win32_window* window, 
                             /*win32_frame_buffer* buffer,*/ 
@@ -486,20 +558,69 @@ Win32ProcessPendingMessages(win32_window* window,
   MSG message = {};
   while(PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
   {
+    /*game_input_modifiers mods = (game_input_modifiers)INPUT_MODS_NONE;
+    if((GetKeyState(VK_SHIFT) & 0x8000) != 0) 
+    {
+      mods = (game_input_modifiers)(mods | INPUT_MODS_SHIFT);
+    }
     
+    if((GetKeyState(VK_CONTROL) & 0x8000) != 0) 
+    {
+      mods = (game_input_modifiers)(mods | INPUT_MODS_CTRL);
+    }
+    
+    if((GetKeyState(VK_MENU) & 0x8000) != 0) 
+    {
+      mods = (game_input_modifiers)(mods | INPUT_MODS_ALT);
+    }*/
     switch(message.message)
     {
       case WM_KEYDOWN:
       case WM_KEYUP:
       {
+        
         game_input_keycode code = (game_input_keycode)message.wParam;
         b32 isDown = (message.lParam & (1 << 31)) == 0;
         b32 wasDown = (message.lParam & (1 << 30)) != 0;
         Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
         if(isDown != wasDown)
         {
+          if(code == HS_KEY_SHIFT)
+          {
+            if(isDown)
+            {
+              input->currentModifiers = (game_input_modifiers)(input->currentModifiers | INPUT_MODS_SHIFT);
+            }
+            else
+            {
+              input->currentModifiers = (game_input_modifiers)(input->currentModifiers & ~(INPUT_MODS_SHIFT));
+            }
+            
+          }
+          if(code == HS_KEY_CONTROL)
+          {
+            if(isDown)
+            {
+              input->currentModifiers = (game_input_modifiers)(input->currentModifiers | INPUT_MODS_CTRL);
+            }
+            else
+            {
+              input->currentModifiers =(game_input_modifiers) (input->currentModifiers & ~(INPUT_MODS_CTRL));
+            }
+          }
+          if(code == HS_KEY_MENU)
+          {
+            if(isDown)
+            {
+              input->currentModifiers = (game_input_modifiers)(input->currentModifiers | INPUT_MODS_ALT);
+            }
+            else
+            {
+              input->currentModifiers = (game_input_modifiers)(input->currentModifiers & ~(INPUT_MODS_ALT));
+            }
+          }
           game_input_event_type eventType = (isDown) ? INPUT_EVENT_KEY_DOWN : INPUT_EVENT_KEY_UP;
-          Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+          Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
         }
       } break;
       case WM_LBUTTONUP:
@@ -509,7 +630,7 @@ Win32ProcessPendingMessages(win32_window* window,
         b32 isDown = (message.wParam & MK_LBUTTON) != 0;
         Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
         game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
       }break;
       case WM_MBUTTONUP:
       case WM_RBUTTONUP:
@@ -518,7 +639,7 @@ Win32ProcessPendingMessages(win32_window* window,
         b32 isDown = (message.wParam & MK_RBUTTON) != 0;
         Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
         game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
       }break;
       case WM_MBUTTONDOWN:
       case WM_RBUTTONDOWN:
@@ -527,7 +648,7 @@ Win32ProcessPendingMessages(win32_window* window,
         b32 isDown = (message.wParam & MK_MBUTTON) != 0;
         Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
         game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, INPUT_MODS_NONE, input->mouseX, input->mouseY);
+        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
       } break;
       case WM_MOUSEMOVE:
       {
@@ -554,6 +675,77 @@ Win32ProcessPendingMessages(win32_window* window,
   }
 }
 
+function void
+Win32BeginRecordingInput(win32_state* win32State, s32 inputRecordingIndex)
+{
+  char* fileName = "foo.hsi";
+  win32State->recordingHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+  win32State->inputRecordingIndex = inputRecordingIndex;
+  
+  /*char* memoryfileName = "game_memory.hsm";
+  win32State->gameMemoryHandle = CreateFileA(memoryfileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+  */
+  DWORD bytesWritten = 0;
+  WriteFile(win32State->recordingHandle, 
+            win32State->gameMemoryBlock, 
+            SafeTruncateU64(win32State->gameMemorySize), 
+            &bytesWritten, 0);
+}
+
+function void
+Win32EndRecordingInput(win32_state* win32State)
+{
+  CloseHandle(win32State->recordingHandle);
+  win32State->recordingHandle = 0;
+  win32State->inputRecordingIndex = 0;
+}
+
+function void
+Win32BeginInputPlayback(win32_state* win32State, s32 inputPlaybackIndex)
+{
+  char* fileName = "foo.hsi";
+  win32State->playbackHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+  win32State->inputPlaybackIndex = inputPlaybackIndex;
+  
+  DWORD bytesRead = 0;
+  ReadFile(win32State->playbackHandle, 
+           win32State->gameMemoryBlock, 
+           SafeTruncateU64(win32State->gameMemorySize), 
+           &bytesRead, 0);
+}
+
+function void
+Win32EndInputPlayback(win32_state* win32State)
+{
+  CloseHandle(win32State->playbackHandle);
+  win32State->playbackHandle = 0;
+  win32State->inputPlaybackIndex = 0;
+}
+
+function void
+Win32RecordInput(win32_state* win32State, game_input* newInput)
+{
+  DWORD bytesWritten = 0;
+  WriteFile(win32State->recordingHandle, newInput, sizeof(game_input), &bytesWritten, 0);
+}
+
+function void
+Win32PlaybackInput(win32_state* win32State, game_input* newInput)
+{
+  DWORD bytesRead = 0;
+  
+  if(ReadFile(win32State->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0))
+  {
+    if(bytesRead == 0)
+    {
+      s32 playbackIndex = win32State->inputPlaybackIndex;
+      Win32EndInputPlayback(win32State);
+      Win32BeginInputPlayback(win32State, playbackIndex);
+      //SetFilePointer(win32State->playbackHandle, 0, 0, FILE_BEGIN);
+      //ReadFile(win32State->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0);
+    }
+  }
+}
 
 function LRESULT CALLBACK
 Win32MainWindowCallback(HWND    handle,
@@ -562,7 +754,7 @@ Win32MainWindowCallback(HWND    handle,
                         LPARAM  lParam)
 {
   LRESULT result = {};
-  win32_window* window = GlobalWindow;;
+  win32_window* window = GlobalWindow;
   switch(message)
   {
     case WM_SIZE:
@@ -589,7 +781,7 @@ Win32MainWindowCallback(HWND    handle,
         GetWindowRect(window->handle, &windowRect);
         window->width = windowRect.right - windowRect.left;
         window->height = windowRect.bottom - windowRect.top;
-        Win32ResizeDIBSection(window->frameBuffer, window->handle, client.width, client.height);
+        Win32ResizeDIBSection(&window->frameBuffer, window->handle, client.width, client.height);
       }
     } break;
     case WM_CLOSE:
@@ -618,10 +810,12 @@ Win32MainWindowCallback(HWND    handle,
       //~ TODO(Sebas):  Transperency when not active app?
       if(isActivating)
       {
+        SetLayeredWindowAttributes(window->handle, 0, 255, LWA_ALPHA);
         OutputDebugString("Activating Window\n");
       }
       else
       {
+        SetLayeredWindowAttributes(window->handle, 0, 50, LWA_ALPHA);
         OutputDebugString("De-Activating Window\n");
         /*LONG_PTR exStyle = GetWindowLongPtrA(handle, GWL_EXSTYLE);
         SetWindowLongPtrA(handle, GWL_EXSTYLE, exStyle);*/
@@ -657,7 +851,7 @@ Win32WindowCreate(win32_window* outWindow,
   outWindow->instance = (instance) ? instance : GetModuleHandle(0);
   
   outWindow->style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
-  outWindow->exStyle = WS_EX_TOPMOST | WS_EX_APPWINDOW;
+  outWindow->exStyle = WS_EX_TOPMOST | WS_EX_APPWINDOW | WS_EX_LAYERED;
   
   RECT windowRect = {0, 0, width, height};
   if(width != CW_USEDEFAULT || height != CW_USEDEFAULT )
@@ -676,7 +870,7 @@ Win32WindowCreate(win32_window* outWindow,
   
   HICON icon = LoadIcon(outWindow->instance, IDI_APPLICATION);
   WNDCLASSA windowClass = {};
-  windowClass.style = CS_DBLCLKS | CS_OWNDC/*| CS_VREDRAW | CS_HREDRAW*/;
+  windowClass.style = CS_DBLCLKS /* | CS_OWNDC| CS_VREDRAW | CS_HREDRAW*/;
   windowClass.lpfnWndProc =  &Win32MainWindowCallback;
   windowClass.cbClsExtra = 0;
   windowClass.cbWndExtra = 0;
@@ -703,6 +897,7 @@ Win32WindowCreate(win32_window* outWindow,
                                          outWindow);// May want to pass data into WM_CREATE message
     if(outWindow->handle)
     {
+      SetLayeredWindowAttributes(outWindow->handle, 0, 255, LWA_ALPHA);
       result = true;
     }
     else
@@ -795,8 +990,9 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   Win32LoadXInput();
   
-  win32_window window = {}; 
-  GlobalWindow = &window;
+  win32_state win32State = {};
+  win32_window* window = &win32State.window; 
+  GlobalWindow = window;
   
   game_memory gameMemory = {};
 #if HELIOS_DEBUG
@@ -809,40 +1005,46 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
 #endif
   
   gameMemory.permanentMemorySize = HS_Megabytes(64);
-  gameMemory.transientMemorySize = HS_Gigabytes(4);
-  u64 totalSize = gameMemory.permanentMemorySize + gameMemory.transientMemorySize;
+  gameMemory.transientMemorySize = HS_Gigabytes(2);
+  win32State.gameMemorySize = gameMemory.permanentMemorySize + gameMemory.transientMemorySize;
   
-  gameMemory.permanentMemory = VirtualAlloc(baseAddress, totalSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+  
+  win32State.gameMemoryBlock = VirtualAlloc(baseAddress,
+                                            win32State.gameMemorySize, 
+                                            MEM_RESERVE|MEM_COMMIT, 
+                                            PAGE_READWRITE);
+  gameMemory.permanentMemory = win32State.gameMemoryBlock;
   gameMemory.transientMemory = ((u8*)gameMemory.permanentMemory + gameMemory.permanentMemorySize);
   
   HS_Assert(baseAddress == gameMemory.permanentMemory);
   
-  window.isRunning 
-    = Win32WindowCreate(&window, instance,BUFFER_WIDTH, BUFFER_HEIGHT) && gameMemory.permanentMemory && gameMemory.transientMemory; 
+  window->isRunning 
+    = Win32WindowCreate(window, instance,BUFFER_WIDTH, BUFFER_HEIGHT) && gameMemory.permanentMemory && gameMemory.transientMemory; 
   
-  if(window.isRunning)
+  if(window->isRunning)
   {
     HANDLE highResolutionTimer = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-    f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window.handle);
+    f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window->handle);
     f32 targetFrameTimeSeconds = 1.0f / monitorRefreshRate;
     s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
     (void)monitorRefreshRate;
     
-    win32_frame_buffer frameBuffer = {};
-    window.frameBuffer = &frameBuffer;
-    Win32ResizeDIBSection(&frameBuffer, window.handle, BUFFER_WIDTH, BUFFER_HEIGHT);
+    win32_frame_buffer* frameBuffer = &window->frameBuffer;
+    Win32ResizeDIBSection(frameBuffer, window->handle, BUFFER_WIDTH, BUFFER_HEIGHT);
     
     game_input inputs[2] = {};
     game_input* oldInput = &inputs[0];
     game_input* newInput = &inputs[1];
-    
+    game_input playbackInput = {};
     
     win32_game_code gameCode = Win32LoadGameCode(sourceGameCodeDLLFullPath, tempGameCodeDLLFullPath);
     
+    b32 gameIsPaused = false;
+    
     LARGE_INTEGER lastCounter = Win32GetWallClock();
     u64 lastCycleCount = __rdtsc();
-    while(window.isRunning)
+    while(window->isRunning)
     {
       FILETIME newDLLWriteTime = Win32GetLastWriteTime(sourceGameCodeDLLFullPath);
       if(CompareFileTime(&newDLLWriteTime, &gameCode.dllLastWriteTime) != 0) 
@@ -860,90 +1062,83 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       {
         newKeyboard->buttons[buttonIdx].transitionCount = 0;
       }
-      
+      memset(newKeyboard->events, 0, HS_ArrayCount(newKeyboard->events));
       newKeyboard->eventCount = 0;
       newKeyboard->textLength = 0;
       
-      game_input* input = newInput;
       newInput->isController = false;
-      Win32ProcessPendingMessages(&window, &input->keyboard);
+      Win32ProcessPendingMessages(window, &newInput->keyboard);
+      Win32PollXInputControllers();
       
-#if 0
-      //~ TODO(Sebas): Should we poll this more frequently
-      for(DWORD controllerIndex = 0;
-          controllerIndex < XUSER_MAX_COUNT;
-          ++controllerIndex)
+      for(u32 eventIndex = 0;
+          eventIndex < newKeyboard->eventCount;
+          ++eventIndex)
       {
-        game_controller_input* oldController = &oldInput->controllers[controllerIndex];
-        game_controller_input* newController = &newInput->controllers[controllerIndex];
-        memset(newController, 0, sizeof(game_controller_input));
-        for(u32 buttonIdx = 0;
-            buttonIdx < HS_ArrayCount(newController->buttons);
-            ++buttonIdx)
+        game_input_event* event = &newKeyboard->events[eventIndex];
+        if(!event->isProcessed)
         {
-          newController->buttons[buttonIdx].endedDown = oldController->buttons[buttonIdx].endedDown;
-        };
-        XINPUT_STATE controllerState = {};
-        if(XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
-        {
-          newController->isConnected = true;
-          //~ NOTE(Sebas):  This controller is plugged in
-          //~ TODO(Sebas): See if controllerState.dwPacketNumber  increments to rapidly
-          XINPUT_GAMEPAD* gamePad = &controllerState.Gamepad;
-          /*controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-          controllerState->padDown = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-          controllerState->padUp = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-          b32 dpadRight = (gamePad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-          b32 buttonStart = (gamePad->wButtons & XINPUT_GAMEPAD_START);
-          b32 buttonBack= (gamePad->wButtons & XINPUT_GAMEPAD_BACK);
-          b32 thumbButtonLeft = (gamePad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
-          b32 thumbButtonRight = (gamePad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
-          b32 shoulderLeft = (gamePad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-          b32 shoulderRight = (gamePad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
-          b32 buttonDown = (gamePad->wButtons & XINPUT_GAMEPAD_A);
-          b32 buttonRight = (gamePad->wButtons & XINPUT_GAMEPAD_B);
-          b32 buttonLeft = (gamePad->wButtons & XINPUT_GAMEPAD_X);
-          b32 buttonUp = (gamePad->wButtons & XINPUT_GAMEPAD_Y);
-          
-          f32 triggerLeft  = (gamePad->bLeftTrigger) ? (f32)gamePad->bLeftTrigger / 255.0f : (f32)gamePad->bLeftTrigger;
-          f32 triggerRight = (gamePad->bRightTrigger) ? (f32)gamePad->bRightTrigger / 255.0f : (f32)gamePad->bLeftTrigger;*/
-          
-          analog_stick stickLeft =  Win32XInputProcessThumbStick((f32)gamePad->sThumbLX, 
-                                                                 (f32)gamePad->sThumbLY, 
-                                                                 XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-          
-          analog_stick stickRight = Win32XInputProcessThumbStick((f32)gamePad->sThumbRX, 
-                                                                 (f32)gamePad->sThumbRY, 
-                                                                 XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-          /*if(input->IsController)
+          switch(event->type)
           {
-            
-          }*/
-          
-        }
-        else
-        {
-          //~ NOTE(Sebas): The controller is not available
+            case INPUT_EVENT_KEY_DOWN:
+            {
+              
+#if HELIOS_DEBUG
+              if(event->code == HS_KEY_P && (event->currentModifiers == INPUT_MODS_SHIFT))
+              {
+                gameIsPaused = !gameIsPaused;
+                event->isProcessed = true;
+              }
+              if(event->code == HS_KEY_L && (event->currentModifiers == INPUT_MODS_SHIFT))
+              {
+                if(win32State.inputRecordingIndex == 0)
+                {
+                  if(win32State.inputPlaybackIndex == 0)
+                  {
+                    Win32BeginRecordingInput(&win32State, 1);
+                  }
+                  else
+                  {
+                    Win32EndInputPlayback(&win32State);
+                  }
+                }
+                else
+                {
+                  Win32EndRecordingInput(&win32State);
+                  Win32BeginInputPlayback(&win32State, 1);
+                }
+                event->isProcessed = true;
+              }
+#endif
+            }
+          }
         }
       }
       
-      
-      XINPUT_VIBRATION vibration = {};
-      vibration.wLeftMotorSpeed =  60000;
-      vibration.wRightMotorSpeed = 60000;
-      b32 setState = (XInputSetState(0, &vibration) == ERROR_SUCCESS);
-#endif
+      if(win32State.inputRecordingIndex > 0)
+      {
+        Win32RecordInput(&win32State, newInput);
+      }
       
       
-      gameCode.UpdateAndRender(&gameMemory, &frameBuffer.gameFrameBuffer, input);
+      game_input* input = newInput;
+      if(win32State.inputPlaybackIndex)
+      {
+        Win32PlaybackInput(&win32State, &playbackInput);
+        input = &playbackInput;
+      }
+      
+      if(!gameIsPaused)
+      {
+        gameCode.UpdateAndRender(&gameMemory, &frameBuffer->gameFrameBuffer, input);
+      }
       
 #if HELIOS_DEBUG
       LARGE_INTEGER renderStartCounter = Win32GetWallClock();
 #endif
-      win32_dimension clientDim = Win32WindowClientDimensions(window.handle);
-      HDC deviceContext = GetDC(window.handle);
-      Win32DisplayBufferInWindow(deviceContext, clientDim.width, clientDim.height, &frameBuffer);
-      ReleaseDC(window.handle, deviceContext);
+      win32_dimension clientDim = Win32WindowClientDimensions(window->handle);
+      HDC deviceContext = GetDC(window->handle);
+      Win32DisplayBufferInWindow(deviceContext, clientDim.width, clientDim.height, frameBuffer);
+      ReleaseDC(window->handle, deviceContext);
 #if HELIOS_DEBUG
       LARGE_INTEGER renderEndCounter = Win32GetWallClock();
       s64 renderTicksElapsed = Win32GetTicksElapsed(renderStartCounter, renderEndCounter);

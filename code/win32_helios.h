@@ -37,7 +37,7 @@ struct win32_window
   DWORD exStyle;
   b32 isResizing;
   b32 isRunning;
-  win32_frame_buffer* frameBuffer;
+  win32_frame_buffer frameBuffer;
 };
 
 struct win32_dimension
@@ -55,6 +55,21 @@ struct win32_game_code
   b32 isValid;
 };
 
+struct win32_state
+{
+  win32_window window;
+  
+  HANDLE gameMemoryHandle;
+  u64 gameMemorySize;
+  void* gameMemoryBlock;
+  
+  HANDLE recordingHandle;
+  s32 inputRecordingIndex;
+  
+  HANDLE playbackHandle;
+  s32 inputPlaybackIndex;
+  
+};
 
 
 #endif //WIN32_HELIOS_H
