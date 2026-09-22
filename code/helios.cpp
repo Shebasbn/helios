@@ -1,6 +1,131 @@
 #include "helios_core.h"
 #include "helios_platform.h"
+#include "helios_math.h"
 #include "helios.h"
+
+#define HS_ARGB(alpha, red, green, blue) ((alpha << 24) | (red << 16) | (green << 8)| (blue))
+
+function void
+DEBUGRenderBackground(game_frame_buffer* buffer, u32 color)
+{
+  u8* row = (u8*)buffer->memory;
+  for(s32 y = 0;
+      y < buffer->height;
+      ++y)
+  {
+    u32* pixel = (u32*)row;
+    for(s32 x = 0;
+        x < buffer->width;
+        ++x)
+      
+    {
+      *pixel = color;
+      ++pixel;
+    }
+    row += buffer->pitch;
+  }
+}
+
+function void
+DEBUGRenderGrid(game_frame_buffer* buffer, u32 color, s32 xOffset=0, s32 yOffset=0, s32 width=50, s32 height=50, s32 scale=1)
+{
+  s32 gridXOffset = (s32)(width / scale);
+  s32 gridYOffset = (s32)(height / scale);
+  
+  
+  
+  
+  b32 isBelowBufferY = (buffer->height % gridYOffset) == 0; 
+  b32 isOutsideBufferX = (buffer->width % gridXOffset) == 0; 
+  
+  //s32 = buffer->height / gridYOffset - ;
+  
+  s32 top = -yOffset;
+  s32 left = -xOffset;
+  s32 topOffset = ModS32(top, gridYOffset); 
+  s32 leftOffset = ModS32(left, gridXOffset);
+  
+  s32 gridCountX = (s32)((f32)(buffer->width - leftOffset) / (f32)gridXOffset); 
+  s32 gridCountY = (s32)((f32)(buffer->height - topOffset) / (f32)gridYOffset); 
+  s32 gridWidth = gridCountX * gridXOffset;
+  s32 gridHeight = gridCountY * gridYOffset;
+  
+  s32 bottomOffset = buffer->height - gridHeight - topOffset;
+  s32 rightOffset =  buffer->width - gridWidth - leftOffset;
+  
+  HS_Assert(buffer->width == (leftOffset + gridWidth + rightOffset));
+  HS_Assert(buffer->height == (topOffset + gridHeight + bottomOffset));
+  
+  HS_Assert((bottomOffset < gridYOffset) || (rightOffset < gridXOffset));
+  
+  s32 gridLineCountX = (rightOffset > 0) ? gridCountX + 1 : gridCountX;
+  s32 gridLineCountY = (bottomOffset > 0) ? gridCountY + 1 : gridCountY;  
+  
+  u8* row = (u8*)buffer->memory + buffer->pitch * topOffset;
+  for(s32 y = 0;
+      y < gridLineCountY;
+      ++y)
+  {
+    u32* pixel = (u32*)row;
+    for(s32 x = 0;
+        x < buffer->width;
+        ++x)
+    {
+      *pixel = color;
+      ++pixel;
+    }
+    row += buffer->pitch * gridYOffset;
+  }
+  
+  u8* col = (u8*)buffer->memory + buffer->bytesPerPixel * leftOffset; 
+  for(s32 x = 0;
+      x < gridLineCountX;
+      ++x)
+  {
+    u8* pixel = col; 
+    for(s32 y = 0;
+        y < buffer->height;
+        ++y)
+    {
+      *(u32*)pixel = color;
+      pixel += buffer->pitch;
+    }
+    col += buffer->bytesPerPixel * gridXOffset;
+  }
+}
+
+function void
+DEBUGRenderMouseCursor(game_frame_buffer* buffer, s32 mouseX, s32 mouseY, s32 width, s32 height)
+{
+  s32 halfWidth = (s32)(width/2.0f);
+  s32 halfHeight = (s32)(height/2.0f);
+  s32 newMouseX = HS_Clamp(0, mouseX - halfWidth, buffer->width - width);
+  s32 newMouseY = HS_Clamp(0, mouseY - halfHeight, buffer->height - height);
+  
+  u32 color = HS_ARGB(255, 255, 255, 255);
+  
+  s32 top = newMouseY;
+  s32 bottom = newMouseY + height;
+  s32 left = newMouseX;
+  s32 right = newMouseX + width;
+  
+  
+  u8* row = (u8*)buffer->memory + buffer->pitch * top;
+  for(s32 y = top;
+      y < bottom;
+      ++y)
+  {
+    u32* pixel = (u32*)row + left;
+    for(s32 x = left;
+        x < right;
+        ++x)
+    {
+      *pixel = color;
+      ++pixel;
+    }
+    row += buffer->pitch;
+  }
+}
 
 function void
 DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
@@ -82,9 +207,22 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       speedX = -1;
     }
-    gameState->blueOffset += speedX * 5;
-    gameState->greenOffset += speedY * 5;
+    gameState->blueOffset += speedX;
+    gameState->greenOffset += speedY;
   }
   
-  DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
+  DEBUGRenderBackground(buffer, HS_ARGB(255, 0, 0, 0));
+  //DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
+  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), gameState->blueOffset, gameState->greenOffset);
+  
+  if(!inputState->isController)
+  {
+    game_keyboard_input* input = &inputState->keyboard;
+    DEBUGRenderMouseCursor(buffer, (s32)input->mouseX, (s32)input->mouseY, 10, 10);
+  }
+  else
+  {
+    HS_Assert(!"Hi");
+  }
+  
 }
