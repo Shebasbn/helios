@@ -207,18 +207,18 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       speedX = -1;
     }
-    gameState->blueOffset += speedX;
-    gameState->greenOffset += speedY;
+    gameState->cameraPosX += speedX;
+    gameState->cameraPosY += speedY;
   }
   
   DEBUGRenderBackground(buffer, HS_ARGB(255, 0, 0, 0));
   //DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
-  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), gameState->blueOffset, gameState->greenOffset);
+  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), gameState->cameraPosX, gameState->cameraPosY);
   
   if(!inputState->isController)
   {
     game_keyboard_input* input = &inputState->keyboard;
-    DEBUGRenderMouseCursor(buffer, (s32)input->mouseX, (s32)input->mouseY, 10, 10);
+    DEBUGRenderMouseCursor(buffer, (s32)input->mouseX, (s32)input->mouseY, 11, 11);
   }
   else
   {

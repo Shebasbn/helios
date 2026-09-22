@@ -7,8 +7,8 @@
 
 struct game_state
 {
-  s32 blueOffset;
-  s32 greenOffset;
+  s32 cameraPosX;
+  s32 cameraPosY;
 };
 
 #endif //HELIOS_H
