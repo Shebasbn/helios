@@ -211,8 +211,11 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cameraPosY += speedY;
   }
   
+#if 1
   DEBUGRenderBackground(buffer, HS_ARGB(255, 0, 0, 0));
-  //DEBUGRenderGradient(buffer, gameState->blueOffset, gameState->greenOffset);
+#else
+  DEBUGRenderGradient(buffer, gameState->cameraPosX, gameState->cameraPosY);
+#endif
   DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), gameState->cameraPosX, gameState->cameraPosY);
   
   if(!inputState->isController)
