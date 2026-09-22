@@ -267,7 +267,7 @@ function inline u32
 SafeTruncateU64(u64 value)
 {
   //~ TODO(Sebas):  Defines for maximum values
-  HS_Assert(value <= 0xFFFFFFFF);
+  HS_Assert(value <= U32Max);
   u32 result = (u32)value;
   return result;
 }
