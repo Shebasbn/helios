@@ -58,8 +58,8 @@ function inline vec2 Vec2Normalize(f32 x, f32  y, f32 magnitude=0)
 {
   vec2 result = {};
   magnitude = (magnitude) ? magnitude : Vec2Magnitude(x, y);
-  result.x = x / magnitude;
-  result.y = y / magnitude;
+  result.x = (magnitude) ? x / magnitude : 0;
+  result.y = (magnitude) ? y / magnitude : 0;
   return result;
 }
 
