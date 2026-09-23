@@ -52,11 +52,14 @@ struct win32_game_code
 {
   HMODULE gameCodeDLL;
   FILETIME dllLastWriteTime;
+  
+  // NOTE(Sebas):  Callback can be null;
   game_update_and_render* UpdateAndRender;
   
   b32 isValid;
 };
 
+#define WIN32_STATE_FILE_NAME_COUNT MAX_PATH
 struct win32_state
 {
   win32_window window;
@@ -71,7 +74,9 @@ struct win32_state
   HANDLE playbackHandle;
   s32 inputPlaybackIndex;
   
-  b32 resetInput;
+  char exeFileName[WIN32_STATE_FILE_NAME_COUNT];
+  char* onePastLastExeFileNameSlash;;
+  
 };
 
 

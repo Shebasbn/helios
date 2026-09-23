@@ -55,12 +55,9 @@
 #define FIXED_WINDOWED WS_OVERLAPPEDWINDOW ^ (WS_THICKFRAME | WS_MAXIMIZEBOX)
 #define RESIZABLE_WINDOWED WS_OVERLAPPEDWINDOW | WS_VISIBLE
 
-
-read_only static win32_window NilWindow = {};
-
+global win32_window* GlobalWindow;
 global s64 GlobalPerfCounterFrequency;
 global f32 GlobalPerfCounterFrequencyTicks;
-
 
 //~ NOTE(Sebas):  XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE* pState)
@@ -86,6 +83,89 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 global x_input_set_state* XInputSetState_ = &XInputSetStateStub;
 #define XInputSetState XInputSetState_
 
+
+function int
+StringLength(char* str)
+{
+  int result = 0;
+  while(*str++)
+  {
+    ++result;
+  }
+  return result;
+}
+
+function char*
+GetCharOnePastLastSlash(int length, char* string)
+{
+  char* result = string;
+  for(int index = 0;
+      index < length;
+      ++index)
+  {
+    if(*string++ == '\\')
+    {
+      result = string;
+    }
+  }
+  return result;
+}
+
+function char*
+GetCharOneBeforeLastSlash(int length, char* string)
+{
+  char* result = string;
+  for(int index = 0;
+      index < length;
+      ++index)
+  {
+    if(*string == '\\')
+    {
+      result = (string - 1);
+    }
+    string++;
+  }
+  return result;
+}
+
+function void
+CatStrings(int sourceACount, char* sourceA, 
+           int sourceBCount, char* sourceB,
+           int destCount, char* dest)
+{
+  HS_Assert(destCount >= sourceACount + sourceBCount);
+  for(int index = 0;
+      index < sourceACount;
+      ++index)
+  {
+    *dest++ = *sourceA++;
+  }
+  
+  for(int index = 0;
+      index < sourceBCount;
+      ++index)
+  {
+    *dest++ = *sourceB++;
+  }
+  *dest++ = 0;
+}
+
+function void
+Win32GetEXEFileName(win32_state* state)
+{
+  
+  DWORD sizeOfFileName = GetModuleFileNameA(0, state->exeFileName, sizeof(state->exeFileName));
+  state->onePastLastExeFileNameSlash = GetCharOnePastLastSlash(sizeOfFileName, state->exeFileName);
+}
+
+function void
+Win32BuildEXEPathFileName(win32_state* state, char* fileName,
+                          s32 destCount, char* dest)
+{
+  CatStrings((u32)(state->onePastLastExeFileNameSlash - state->exeFileName), state->exeFileName, 
+             StringLength(fileName), fileName,
+             destCount, dest);
+}
 
 DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
 {
@@ -175,12 +255,10 @@ function FILETIME
 Win32GetLastWriteTime(char* fileName)
 {
   FILETIME result = {};
-  WIN32_FIND_DATAA findData = {};
-  HANDLE fileHandle = FindFirstFileA(fileName, &findData);
-  if(fileHandle != INVALID_HANDLE_VALUE )
+  WIN32_FILE_ATTRIBUTE_DATA fileData = {};
+  if(GetFileAttributesExA(fileName, GetFileExInfoStandard, &fileData))
   {
-    result = findData.ftLastWriteTime;
-    FindClose(fileHandle);
+    result = fileData.ftLastWriteTime;
   }
   return result;
 }
@@ -209,7 +287,7 @@ Win32LoadGameCode(char* sourceDLLName, char* tempDLLName)
   
   if(!result.isValid)
   {
-    result.UpdateAndRender = &GameUpdateAndRenderStub;
+    result.UpdateAndRender = 0;
   }
   return result;
 }
@@ -223,7 +301,7 @@ Win32UnloadGameCode(win32_game_code* gameCode)
     gameCode->gameCodeDLL = 0;
   }
   gameCode->isValid = false;
-  gameCode->UpdateAndRender = &GameUpdateAndRenderStub;
+  gameCode->UpdateAndRender = 0;
   
 }
 
@@ -301,8 +379,6 @@ Win32GetSecondsElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
   return result;
 }
 
-global win32_window* GlobalWindow;
-
 function win32_dimension 
 Win32WindowClientDimensions(HWND window)
 {
@@ -320,8 +396,13 @@ Win32DisplayBufferInWindow(HDC deviceContext,
                            s32 clientHeight, 
                            win32_frame_buffer* buffer)
 {
+  // NOTE(Sebas): For prototyping pursposes, we're going to always blit 1-to-1 pixels
+  // to make sure we don't introduce artifacts with stretch while we are learning to
+  // code the renderer!
+  (void)clientWidth;
+  (void)clientHeight;
   StretchDIBits(deviceContext,
-                0, 0, clientWidth, clientHeight,
+                0, 0, buffer->width, buffer->height,
                 0, 0, buffer->width, buffer->height,
                 buffer->memory,
                 &buffer->info,
@@ -461,7 +542,7 @@ Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type,
     event->code = code;
     event->mouseX = mouseX;
     event->mouseY = mouseY;
-    event->currentModifiers = mods;
+    event->modifiers = mods;
     event->isProcessed = false;
   }
   else
@@ -617,21 +698,6 @@ Win32ProcessPendingMessages(win32_window* window,
   MSG message = {};
   while(PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
   {
-    /*game_input_modifiers mods = (game_input_modifiers)INPUT_MODS_NONE;
-    if((GetKeyState(VK_SHIFT) & 0x8000) != 0) 
-    {
-      mods = (game_input_modifiers)(mods | INPUT_MODS_SHIFT);
-    }
-    
-    if((GetKeyState(VK_CONTROL) & 0x8000) != 0) 
-    {
-      mods = (game_input_modifiers)(mods | INPUT_MODS_CTRL);
-    }
-    
-    if((GetKeyState(VK_MENU) & 0x8000) != 0) 
-    {
-      mods = (game_input_modifiers)(mods | INPUT_MODS_ALT);
-    }*/
     switch(message.message)
     {
       case WM_KEYDOWN:
@@ -755,19 +821,25 @@ Win32ProcessPendingMessages(win32_window* window,
 }
 
 function void
-Win32BeginRecordingInput(win32_state* win32State, s32 inputRecordingIndex)
+Wi32GetInputFileLocation(win32_state* state, int slotIndex, int destCount, char* dest)
 {
-  char* fileName = "foo.hsi";
-  win32State->recordingHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-  win32State->inputRecordingIndex = inputRecordingIndex;
+  HS_Assert(slotIndex == 1);
+  Win32BuildEXEPathFileName(state, "game_input.hmi", destCount, dest);
+}
+
+function void
+Win32BeginRecordingInput(win32_state* state, s32 inputRecordingIndex)
+{
+  char fileName[WIN32_STATE_FILE_NAME_COUNT];
+  Wi32GetInputFileLocation(state, inputRecordingIndex, sizeof(fileName), fileName);
   
-  /*char* memoryfileName = "game_memory.hsm";
-  win32State->gameMemoryHandle = CreateFileA(memoryfileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-  */
+  state->recordingHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+  state->inputRecordingIndex = inputRecordingIndex;
+  
   DWORD bytesWritten = 0;
-  WriteFile(win32State->recordingHandle, 
-            win32State->gameMemoryBlock, 
-            SafeTruncateU64(win32State->gameMemorySize), 
+  WriteFile(state->recordingHandle, 
+            state->gameMemoryBlock, 
+            SafeTruncateU64(state->gameMemorySize), 
             &bytesWritten, 0);
 }
 
@@ -780,49 +852,50 @@ Win32EndRecordingInput(win32_state* win32State)
 }
 
 function void
-Win32BeginInputPlayback(win32_state* win32State, s32 inputPlaybackIndex)
+Win32BeginInputPlayback(win32_state* state, s32 inputPlaybackIndex)
 {
-  char* fileName = "foo.hsi";
-  win32State->playbackHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-  win32State->inputPlaybackIndex = inputPlaybackIndex;
+  char fileName[WIN32_STATE_FILE_NAME_COUNT];
+  Wi32GetInputFileLocation(state, inputPlaybackIndex, sizeof(fileName), fileName);
+  state->playbackHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+  state->inputPlaybackIndex = inputPlaybackIndex;
   
   DWORD bytesRead = 0;
-  ReadFile(win32State->playbackHandle, 
-           win32State->gameMemoryBlock, 
-           SafeTruncateU64(win32State->gameMemorySize), 
+  ReadFile(state->playbackHandle, 
+           state->gameMemoryBlock, 
+           SafeTruncateU64(state->gameMemorySize), 
            &bytesRead, 0);
 }
 
 function void
-Win32EndInputPlayback(win32_state* win32State)
+Win32EndInputPlayback(win32_state* state)
 {
-  CloseHandle(win32State->playbackHandle);
-  win32State->playbackHandle = 0;
-  win32State->inputPlaybackIndex = 0;
+  CloseHandle(state->playbackHandle);
+  state->playbackHandle = 0;
+  state->inputPlaybackIndex = 0;
 }
 
 function void
-Win32RecordInput(win32_state* win32State, game_input* newInput)
+Win32RecordInput(win32_state* state, game_input* newInput)
 {
   DWORD bytesWritten = 0;
-  WriteFile(win32State->recordingHandle, newInput, sizeof(game_input), &bytesWritten, 0);
+  WriteFile(state->recordingHandle, newInput, sizeof(game_input), &bytesWritten, 0);
 }
 
 function void
-Win32PlaybackInput(win32_state* win32State, game_input* newInput)
+Win32PlaybackInput(win32_state* state, game_input* newInput)
 {
   DWORD bytesRead = 0;
   
-  if(ReadFile(win32State->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0))
+  if(ReadFile(state->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0))
   {
     if(bytesRead == 0)
     {
-      s32 playbackIndex = win32State->inputPlaybackIndex;
-      Win32EndInputPlayback(win32State);
-      Win32BeginInputPlayback(win32State, playbackIndex);
-      ReadFile(win32State->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0);
-      //SetFilePointer(win32State->playbackHandle, 0, 0, FILE_BEGIN);
-      //ReadFile(win32State->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0);
+      s32 playbackIndex = state->inputPlaybackIndex;
+      Win32EndInputPlayback(state);
+      Win32BeginInputPlayback(state, playbackIndex);
+      ReadFile(state->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0);
+      //SetFilePointer(state->playbackHandle, 0, 0, FILE_BEGIN);
+      //ReadFile(state->playbackHandle, newInput, sizeof(game_input), &bytesRead, 0);
     }
   }
 }
@@ -1014,46 +1087,6 @@ Win32WindowCreate(win32_window* outWindow,
   return result;
 }
 
-function char*
-GetCharOnePastLastSlash(int length, char* string)
-{
-  char* result = 0;
-  
-  result = string;
-  for(int index = 0;
-      index < length;
-      ++index)
-  {
-    if(*string++ == '\\')
-    {
-      result = string;
-    }
-  }
-  return result;
-}
-
-function void
-CatStrings(int sourceACount, char* sourceA, 
-           int sourceBCount, char* sourceB,
-           int destCount, char* dest)
-{
-  HS_Assert(destCount >= sourceACount + sourceBCount);
-  for(int index = 0;
-      index < sourceACount;
-      ++index)
-  {
-    *dest++ = *sourceA++;
-  }
-  
-  for(int index = 0;
-      index < sourceBCount;
-      ++index)
-  {
-    *dest++ = *sourceB++;
-  }
-  *dest++ = 0;
-}
-
 int WINAPI 
 WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
 {
@@ -1061,41 +1094,38 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   (void)commandLine;
   (void)showCode;
   
-  // NOTE(Sebas): Never Use MAX_PATH in code that is user-facing, because it can be
-  // dangerous and lead to bad results.
-  char exeFileName[MAX_PATH];
-  DWORD sizeOfFileName = GetModuleFileNameA(0, exeFileName, sizeof(exeFileName));
-  
-  char* onePastLastSlash = GetCharOnePastLastSlash(sizeOfFileName, exeFileName);
-  
-  char sourceGameCodeDLLFileName[] = "helios.dll";
-  char sourceGameCodeDLLFullPath[MAX_PATH];
-  
-  CatStrings((u32)(onePastLastSlash - exeFileName), exeFileName, 
-             sizeof(sourceGameCodeDLLFileName) - 1, sourceGameCodeDLLFileName,
-             sizeof(sourceGameCodeDLLFullPath), sourceGameCodeDLLFullPath);
-  
-  char tempGameCodeDLLFileName[] = "helios_temp.dll";
-  char tempGameCodeDLLFullPath[MAX_PATH];
-  
-  CatStrings((u32)(onePastLastSlash - exeFileName), exeFileName, 
-             sizeof(tempGameCodeDLLFileName) - 1, tempGameCodeDLLFileName,
-             sizeof(tempGameCodeDLLFullPath), tempGameCodeDLLFullPath);
+  win32_state win32State = {};
   
   LARGE_INTEGER counterFrequency;
   QueryPerformanceFrequency(&counterFrequency); 
   GlobalPerfCounterFrequency = counterFrequency.QuadPart;
   GlobalPerfCounterFrequencyTicks = (f32)(counterFrequency.QuadPart * SecondsPerTick);
   
-  Win32LoadXInput();
+  Win32GetEXEFileName(&win32State);
   
-  win32_state win32State = {};
+  // NOTE(Sebas): Never Use MAX_PATH in code that is user-facing, because it can be
+  // dangerous and lead to bad results.
+  char sourceGameCodeDLLFullPath[WIN32_STATE_FILE_NAME_COUNT];
+  Win32BuildEXEPathFileName(&win32State, 
+                            "helios.dll",
+                            sizeof(sourceGameCodeDLLFullPath), 
+                            sourceGameCodeDLLFullPath);
+  
+  char tempGameCodeDLLFullPath[WIN32_STATE_FILE_NAME_COUNT];
+  Win32BuildEXEPathFileName(&win32State, 
+                            "helios_temp.dll",
+                            sizeof(tempGameCodeDLLFullPath), 
+                            tempGameCodeDLLFullPath);
+  
+  
+  
+  Win32LoadXInput();
   win32_window* window = &win32State.window; 
   GlobalWindow = window;
   
   game_memory gameMemory = {};
 #if HELIOS_DEBUG
-  LPVOID baseAddress = (LPVOID)HS_Terabytes(2);
+  LPVOID baseAddress = (LPVOID)HS_Terabytes(4);
   gameMemory.DEBUGPlatformReadEntireFile = &DEBUGPlatformReadEntireFile;
   gameMemory.DEBUGPlatformWriteEntireFile = &DEBUGPlatformWriteEntireFile;
   gameMemory.DEBUGPlatformFreeFileMemory = &DEBUGPlatformFreeFileMemory;
@@ -1105,13 +1135,14 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   gameMemory.permanentMemorySize = HS_Megabytes(64);
   gameMemory.transientMemorySize = HS_Gigabytes(1);
+  
+  
   win32State.gameMemorySize = gameMemory.permanentMemorySize + gameMemory.transientMemorySize;
-  
-  
   win32State.gameMemoryBlock = VirtualAlloc(baseAddress,
                                             win32State.gameMemorySize, 
                                             MEM_RESERVE|MEM_COMMIT, 
                                             PAGE_READWRITE);
+  
   gameMemory.permanentMemory = win32State.gameMemoryBlock;
   gameMemory.transientMemory = ((u8*)gameMemory.permanentMemory + gameMemory.permanentMemorySize);
   
@@ -1207,7 +1238,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
             {
               
 #if HELIOS_DEBUG
-              if(event->code == HS_KEY_TAB && (event->currentModifiers == INPUT_MODS_SHIFT))
+              if(event->code == HS_KEY_TAB && (event->modifiers == INPUT_MODS_SHIFT))
               {
                 if(!window->isActive)
                 {
@@ -1222,12 +1253,12 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
                   Win32ToggleWindowTransparency(window);
                 }
               }
-              if(event->code == HS_KEY_P && (event->currentModifiers == INPUT_MODS_SHIFT))
+              if(event->code == HS_KEY_P && (event->modifiers == INPUT_MODS_SHIFT))
               {
                 gameIsPaused = !gameIsPaused;
                 event->isProcessed = true;
               }
-              if(event->code == HS_KEY_L && (event->currentModifiers == INPUT_MODS_SHIFT))
+              if(event->code == HS_KEY_L && (event->modifiers == INPUT_MODS_SHIFT))
               {
                 if(win32State.inputRecordingIndex == 0)
                 {
@@ -1253,22 +1284,25 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         }
       }
       
-      if(win32State.inputRecordingIndex > 0 && !gameIsPaused)
-      {
-        Win32RecordInput(&win32State, newInput);
-      }
-      
-      
-      game_input* input = newInput;
-      if(win32State.inputPlaybackIndex && !gameIsPaused)
-      {
-        Win32PlaybackInput(&win32State, &playbackInput);
-        input = &playbackInput;
-      }
-      
       if(!gameIsPaused)
       {
-        gameCode.UpdateAndRender(&gameMemory, &frameBuffer->gameFrameBuffer, input);
+        if(win32State.inputRecordingIndex > 0)
+        {
+          Win32RecordInput(&win32State, newInput);
+        }
+        
+        
+        game_input* input = newInput;
+        if(win32State.inputPlaybackIndex > 0)
+        {
+          Win32PlaybackInput(&win32State, &playbackInput);
+          input = &playbackInput;
+        }
+        
+        if(gameCode.UpdateAndRender)
+        {
+          gameCode.UpdateAndRender(&gameMemory, &frameBuffer->gameFrameBuffer, input);
+        }
       }
       
 #if HELIOS_DEBUG
