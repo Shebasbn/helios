@@ -11,7 +11,7 @@ set cl_defines= /DHELIOS_DEBUG=1 /D_HAS_EXCEPTIONS=0 /D_CRT_SECURE_NO_WARNINGS=1
 rem /WX
 set cl_common=/I..\code\ /MTd /nologo /FC /Z7 /WX /GR-
 set cl_opts= %cl_common% /Oi %cl_defines% 
-set cl_link_opts=/INCREMENTAL:NO /opt:ref
+set cl_link_opts=/INCREMENTAL:NO /opt:ref /DYNAMICBASE:NO
 
 set HeliosDLLExports=/EXPORT:GameUpdateAndRender
 set HeliosDLLOutDirs= /Fm"build/" /Fe"build/" /Fo"build/" 
