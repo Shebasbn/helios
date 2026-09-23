@@ -3,3 +3,7 @@ build
 *.raddbg
 
 *.bak
+
+*.hsi
+
+*.out
