@@ -182,8 +182,35 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   if(inputState->isController)
   {
     //~ TODO(Sebas):  Use analog movement tuning, And Virtual selector/mouse
-    /*BlueOffset += (s32)4.0f*(input0.EndX);
-    GreenOffset += (s32)4.0f*(input0.EndY);*/
+    game_controller_input* controllerInput;
+    for(s32 controllerIndex = 0;
+        controllerIndex < 4;
+        ++controllerIndex)
+    {
+      controllerInput = GetController(inputState, controllerIndex);
+      if(controllerInput->isConnected)
+      {
+        break;
+      }
+    }
+    
+    if(controllerInput->isAnalog)
+    {
+      f32 speedX = 0;
+      f32 speedY = 0;
+      f32 acceleration = 5 * controllerInput->stickLeftMagnitude;
+      speedX = acceleration * controllerInput->stickLeftX;
+      speedY = acceleration * controllerInput->stickLeftY;
+      gameState->cameraPosX += RoundF32(speedX);
+      gameState->cameraPosY += RoundF32(speedY);
+    }
+    else
+    {
+      gameState->cameraPosX += RoundF32(5 * controllerInput->stickLeftX);
+      gameState->cameraPosY += RoundF32(5 * controllerInput->stickLeftY);
+    }
+    
+    
   }
   else
   {
@@ -225,7 +252,7 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
   else
   {
-    HS_Assert(!"Hi");
+    
   }
   
 }

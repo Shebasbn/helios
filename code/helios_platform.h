@@ -79,6 +79,12 @@ extern "C"
     b32 transitionCount;
   };
   
+  struct game_analog_state
+  {
+    vec2 unitVector;
+    f32 normalizedMagnitude;
+  };
+  
   struct game_keyboard_input
   {
     f32 mouseX;
@@ -97,21 +103,66 @@ extern "C"
   struct game_controller_input
   {
     b32 isConnected;
+    b32 isAnalog;
+    u32 packetNumber;
     union
     {
-      game_button_state buttons[10];
+      game_analog_state stickLeft;
+      struct
+      {
+        union
+        {
+          vec2 stickLeftVec;
+          struct
+          {
+            f32 stickLeftX;
+            f32 stickLeftY;
+          };
+        };
+        f32 stickLeftMagnitude;
+      };
+    };
+    
+    union
+    {
+      game_analog_state stickRight;
+      struct
+      {
+        union
+        {
+          vec2 stickRightVec;
+          struct
+          {
+            f32 stickRightX;
+            f32 stickRightY;
+          };
+        };
+        f32 stickRightMagnitude;
+      };
+    };
+    
+    union
+    {
+      game_button_state buttons[12];
       struct
       {
         game_button_state padUp;
         game_button_state padDown;
         game_button_state padLeft;
-        game_button_state padRight;
+        game_button_state padRight; 
+        
         game_button_state buttonUp;
         game_button_state buttonDown;
         game_button_state buttonLeft;
         game_button_state buttonRight;
+        
         game_button_state shoulderLeft;
         game_button_state shoulderRight;
+        
+        game_button_state back;
+        game_button_state start;
+        
+        game_button_state terminator;
       };
       
       f32 triggerLeft;
@@ -123,6 +174,7 @@ extern "C"
   {
     b32 isController;
     f32 deltaTime;
+    u32 accumulater;
     game_keyboard_input keyboard;
     game_controller_input controllers[4];
   };
@@ -160,6 +212,13 @@ extern "C"
     (void)buffer; 
     (void)inputState;
   }
+  
+  function inline game_controller_input* GetController(game_input* input, u32 controllerIndex)
+  {
+    HS_Assert(controllerIndex < HS_ArrayCount(input->controllers));
+    return &input->controllers[controllerIndex];
+  }
+  
   
   
   
