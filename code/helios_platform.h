@@ -69,7 +69,7 @@ extern "C"
     game_input_keycode code;
     f32 mouseX;
     f32 mouseY;
-    game_input_modifiers currentModifiers;
+    game_input_modifiers modifiers;
     b32 isProcessed;
   };
   
@@ -206,12 +206,6 @@ extern "C"
   
 # define GAME_UPDATE_AND_RENDER(name) void name(game_memory* memory, game_frame_buffer* buffer, game_input* inputState)
   typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
-  GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub)
-  {
-    (void)memory; 
-    (void)buffer; 
-    (void)inputState;
-  }
   
   function inline game_controller_input* GetController(game_input* input, u32 controllerIndex)
   {
