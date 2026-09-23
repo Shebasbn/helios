@@ -670,7 +670,7 @@ Win32ProcessPendingMessages(win32_window* window,
       {
         TranslateMessage(&message);
         DispatchMessage(&message);
-      }
+      } break;
     }
   }
 }
@@ -747,6 +747,27 @@ Win32PlaybackInput(win32_state* win32State, game_input* newInput)
   }
 }
 
+function void
+Win32ToggleWindowTransparency(win32_window* window)
+{
+  BYTE notActiveAlpha = 50;
+  BYTE activeAlpha = 255;
+  
+  if(!window->isActive)
+  {
+    SetLayeredWindowAttributes(window->handle, 0, notActiveAlpha, LWA_ALPHA);
+    LONG exStyle = GetWindowLong(window->handle, GWL_EXSTYLE);
+    SetWindowLong(window->handle, GWL_EXSTYLE, exStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+  }
+  else
+  {
+    SetLayeredWindowAttributes(window->handle, 0, activeAlpha, LWA_ALPHA);
+    LONG exStyle = GetWindowLong(window->handle, GWL_EXSTYLE);
+    SetWindowLong(window->handle, GWL_EXSTYLE, exStyle & ~(WS_EX_TRANSPARENT));
+  }
+  
+}
+
 function LRESULT CALLBACK
 Win32MainWindowCallback(HWND    handle,
                         UINT    message,
@@ -807,18 +828,16 @@ Win32MainWindowCallback(HWND    handle,
     case WM_ACTIVATEAPP:
     {
       b32 isActivating =  (b32)wParam;
-      //~ TODO(Sebas):  Transperency when not active app?
-      if(isActivating)
+      //~ TODO(Sebas):  Is there a better way to handle transparency?
+      if(!isActivating)
       {
-        SetLayeredWindowAttributes(window->handle, 0, 255, LWA_ALPHA);
-        OutputDebugString("Activating Window\n");
+        window->isActive = false;
+        Win32ToggleWindowTransparency(window);
       }
       else
       {
-        SetLayeredWindowAttributes(window->handle, 0, 50, LWA_ALPHA);
-        OutputDebugString("De-Activating Window\n");
-        /*LONG_PTR exStyle = GetWindowLongPtrA(handle, GWL_EXSTYLE);
-        SetWindowLongPtrA(handle, GWL_EXSTYLE, exStyle);*/
+        LONG exStyle = GetWindowLong(window->handle, GWL_EXSTYLE);
+        SetWindowLong(window->handle, GWL_EXSTYLE, exStyle & ~(WS_EX_TRANSPARENT));
       }
     } break;
     case WM_PAINT:
@@ -1028,6 +1047,8 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     f32 targetFrameTimeSeconds = 1.0f / monitorRefreshRate;
     s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
+    window->isActive = true;
+    
     (void)monitorRefreshRate;
     
     win32_frame_buffer* frameBuffer = &window->frameBuffer;
@@ -1067,8 +1088,30 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       newKeyboard->textLength = 0;
       
       newInput->isController = false;
+      
       Win32ProcessPendingMessages(window, &newInput->keyboard);
       Win32PollXInputControllers();
+      
+      if(false)
+      {
+        MSG message = {};
+        while(PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
+        {
+          switch(message.message)
+          {
+            case WM_QUIT:
+            {
+              window->isRunning = false;
+              OutputDebugString("WM_QUIT\n");
+            } break;
+            default:
+            {
+              TranslateMessage(&message);
+              DispatchMessage(&message);
+            }
+          } break;
+        }
+      }
       
       for(u32 eventIndex = 0;
           eventIndex < newKeyboard->eventCount;
@@ -1083,6 +1126,21 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
             {
               
 #if HELIOS_DEBUG
+              if(event->code == HS_KEY_TAB && (event->currentModifiers == INPUT_MODS_SHIFT))
+              {
+                if(!window->isActive)
+                {
+                  SetActiveWindow(window->handle);
+                  window->isActive = true;
+                  Win32ToggleWindowTransparency(window);
+                  
+                }
+                else
+                {
+                  window->isActive = false;
+                  Win32ToggleWindowTransparency(window);
+                }
+              }
               if(event->code == HS_KEY_P && (event->currentModifiers == INPUT_MODS_SHIFT))
               {
                 gameIsPaused = !gameIsPaused;

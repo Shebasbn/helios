@@ -38,6 +38,8 @@ struct win32_window
   b32 isResizing;
   b32 isRunning;
   win32_frame_buffer frameBuffer;
+  
+  b32 isActive;
 };
 
 struct win32_dimension
@@ -69,6 +71,7 @@ struct win32_state
   HANDLE playbackHandle;
   s32 inputPlaybackIndex;
   
+  b32 resetInput;
 };
 
 
