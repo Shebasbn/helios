@@ -169,6 +169,7 @@ Win32BuildEXEPathFileName(win32_state* state, char* fileName,
 
 DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
 {
+  (void)thread;
   if(memory)
   {
     VirtualFree(memory, 0, MEM_RELEASE);;
@@ -199,7 +200,7 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
         else
         {
           //~ TODO(Sebas): Logging
-          DEBUGPlatformFreeFileMemory(result.contents);
+          DEBUGPlatformFreeFileMemory(thread, result.contents);
           result.contentsSize = 0;
         }
       }
@@ -225,6 +226,7 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 
 DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
 {
+  (void)thread;
   b32 result = false;
   
   HANDLE fileHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, OPEN_ALWAYS, 0, 0);
@@ -689,6 +691,29 @@ Win32PollXInputControllers(game_input* oldInput, game_input* newInput)
 #endif
 }
 
+function void
+Win32ProcessMouseButtons(game_input* gameInput, game_input_keycode code,  b32 isDown,  LPARAM lParam)
+{
+  game_keyboard_input* input = &gameInput->keyboard;
+  if(gameInput->accumulater > 30)
+  {
+    gameInput->isController = false;
+  }
+  if(input->buttons[code].endedDown != isDown)
+  {
+    input->mouseX = (f32)GET_X_LPARAM(lParam);
+    input->mouseY = (f32)GET_Y_LPARAM(lParam); 
+    input->buttons[code].endedDown = isDown;
+    game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
+    Win32CreateKeyboardEvent(input, 
+                             eventType, 
+                             code, 
+                             input->currentModifiers, 
+                             input->mouseX, 
+                             input->mouseY);
+  }
+}
+
 function void  
 Win32ProcessPendingMessages(win32_window* window, 
                             /*win32_frame_buffer* buffer,*/ 
@@ -698,6 +723,7 @@ Win32ProcessPendingMessages(win32_window* window,
   MSG message = {};
   while(PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
   {
+    TranslateMessage(&message);
     switch(message.message)
     {
       case WM_KEYDOWN:
@@ -755,41 +781,20 @@ Win32ProcessPendingMessages(win32_window* window,
       case WM_LBUTTONUP:
       case WM_LBUTTONDOWN:
       {
-        if(gameInput->accumulater > 30)
-        {
-          gameInput->isController = false;
-        }
-        game_input_keycode code = HS_KEY_LBUTTON;
         b32 isDown = (message.wParam & MK_LBUTTON) != 0;
-        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
-        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
+        Win32ProcessMouseButtons(gameInput, HS_KEY_LBUTTON, isDown, message.lParam);
       }break;
-      case WM_MBUTTONUP:
       case WM_RBUTTONUP:
-      {
-        if(gameInput->accumulater > 30)
-        {
-          gameInput->isController = false;
-        }
-        game_input_keycode code = HS_KEY_RBUTTON;
-        b32 isDown = (message.wParam & MK_RBUTTON) != 0;
-        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
-        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
-      }break;
-      case WM_MBUTTONDOWN:
       case WM_RBUTTONDOWN:
       {
-        if(gameInput->accumulater > 30)
-        {
-          gameInput->isController = false;
-        }
-        game_input_keycode code = HS_KEY_MBUTTON;
+        b32 isDown = (message.wParam & MK_RBUTTON) != 0;
+        Win32ProcessMouseButtons(gameInput, HS_KEY_RBUTTON, isDown, message.lParam);
+      }break;
+      case WM_MBUTTONUP:
+      case WM_MBUTTONDOWN:
+      {
         b32 isDown = (message.wParam & MK_MBUTTON) != 0;
-        Win32ProcessKeyboardMessage(&input->buttons[code], isDown);
-        game_input_event_type eventType = (isDown) ? INPUT_EVENT_MOUSE_DOWN : INPUT_EVENT_MOUSE_UP;
-        Win32CreateKeyboardEvent(input, eventType, code, input->currentModifiers, input->mouseX, input->mouseY);
+        Win32ProcessMouseButtons(gameInput, HS_KEY_MBUTTON, isDown, message.lParam);
       } break;
       case WM_MOUSEMOVE:
       {
@@ -799,12 +804,24 @@ Win32ProcessPendingMessages(win32_window* window,
         }
         input->mouseX = (f32)GET_X_LPARAM(message.lParam); 
         input->mouseY = (f32)GET_Y_LPARAM(message.lParam); 
-#if 1
+#if 0
         char strBuffer[256];
         sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
         OutputDebugString(strBuffer);
 #endif
-      } break; 
+      } break;
+      case WM_CHAR:
+      {
+        char ch = (char)(message.wParam);
+        if(input->textLength < MAX_TEXT_INPUT)
+        {
+          if(ch == '\r' || ch == '\n')
+          {
+            ch = '\n';
+          }
+          input->textInput[input->textLength++] = ch;
+        }
+      } break;
       case WM_QUIT:
       {
         window->isRunning = false;
@@ -813,7 +830,7 @@ Win32ProcessPendingMessages(win32_window* window,
       } break;
       default:
       {
-        TranslateMessage(&message);
+        //TranslateMessage(&message);
         DispatchMessage(&message);
       } break;
     }
@@ -821,49 +838,77 @@ Win32ProcessPendingMessages(win32_window* window,
 }
 
 function void
-Wi32GetInputFileLocation(win32_state* state, int slotIndex, int destCount, char* dest)
+Wi32GetInputFileLocation(win32_state* state, b32 inputStream,
+                         int slotIndex, int destCount, char* dest)
 {
-  HS_Assert(slotIndex == 1);
-  Win32BuildEXEPathFileName(state, "game_input.hmi", destCount, dest);
+  HS_Assert(slotIndex < HS_ArrayCount(state->replayBuffers));
+  char temp[64];
+  wsprintf(temp, "input_replay_%d_%s.hsi", slotIndex, inputStream ? "input" : "state");
+  Win32BuildEXEPathFileName(state, temp, destCount, dest);
+}
+
+function win32_replay_buffer* 
+Win32GetReplayBuffer(win32_state* state, s32 replayIndex)
+{
+  --replayIndex;
+  HS_Assert(replayIndex < HS_ArrayCount(state->replayBuffers));
+  win32_replay_buffer* result = &state->replayBuffers[replayIndex];
+  return result;
 }
 
 function void
 Win32BeginRecordingInput(win32_state* state, s32 inputRecordingIndex)
 {
-  char fileName[WIN32_STATE_FILE_NAME_COUNT];
-  Wi32GetInputFileLocation(state, inputRecordingIndex, sizeof(fileName), fileName);
   
-  state->recordingHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-  state->inputRecordingIndex = inputRecordingIndex;
-  
-  DWORD bytesWritten = 0;
-  WriteFile(state->recordingHandle, 
-            state->gameMemoryBlock, 
-            SafeTruncateU64(state->gameMemorySize), 
-            &bytesWritten, 0);
-}
-
-function void
-Win32EndRecordingInput(win32_state* win32State)
-{
-  CloseHandle(win32State->recordingHandle);
-  win32State->recordingHandle = 0;
-  win32State->inputRecordingIndex = 0;
+  win32_replay_buffer* replayBuffer = Win32GetReplayBuffer(state, inputRecordingIndex);
+  if(replayBuffer->memoryBlock)
+  {
+    char fileName[WIN32_STATE_FILE_NAME_COUNT];
+    Wi32GetInputFileLocation(state, true, inputRecordingIndex, sizeof(fileName), fileName);
+    
+    state->recordingHandle = CreateFileA(fileName, GENERIC_WRITE, 0,  0, CREATE_ALWAYS, 0, 0);
+    state->inputRecordingIndex = inputRecordingIndex;
+    
+#if 0
+    LARGE_INTEGER filePosition;
+    filePosition.QuadPart = state->gameMemorySize;
+    SetFilePointerEx(state->recordingHandle, filePosition, 0, FILE_BEGIN);
+#endif
+    
+    LARGE_INTEGER startCopyCounter = Win32GetWallClock();
+    CopyMemory(replayBuffer->memoryBlock, state->gameMemoryBlock, state->gameMemorySize);
+    LARGE_INTEGER endCopyCounter = Win32GetWallClock();
+    f32 copySecondElapsed = Win32GetSecondsElapsed(startCopyCounter, endCopyCounter);
+    (void)copySecondElapsed;
+  }
 }
 
 function void
 Win32BeginInputPlayback(win32_state* state, s32 inputPlaybackIndex)
 {
-  char fileName[WIN32_STATE_FILE_NAME_COUNT];
-  Wi32GetInputFileLocation(state, inputPlaybackIndex, sizeof(fileName), fileName);
-  state->playbackHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-  state->inputPlaybackIndex = inputPlaybackIndex;
-  
-  DWORD bytesRead = 0;
-  ReadFile(state->playbackHandle, 
-           state->gameMemoryBlock, 
-           SafeTruncateU64(state->gameMemorySize), 
-           &bytesRead, 0);
+  win32_replay_buffer* replayBuffer = Win32GetReplayBuffer(state, inputPlaybackIndex);
+  if(replayBuffer->memoryBlock)
+  {
+    char fileName[WIN32_STATE_FILE_NAME_COUNT];
+    Wi32GetInputFileLocation(state, true, inputPlaybackIndex, sizeof(fileName), fileName);
+    
+    state->playbackHandle = CreateFileA(fileName, GENERIC_READ, 0,  0, OPEN_EXISTING, 0, 0);
+    state->inputPlaybackIndex = inputPlaybackIndex;
+#if 0
+    LARGE_INTEGER filePosition;
+    filePosition.QuadPart = state->gameMemorySize;
+    SetFilePointerEx(state->playbackHandle, filePosition, 0, FILE_BEGIN);
+#endif
+    CopyMemory(state->gameMemoryBlock, replayBuffer->memoryBlock, state->gameMemorySize);
+  }
+}
+
+function void
+Win32EndRecordingInput(win32_state* state)
+{
+  CloseHandle(state->recordingHandle);
+  state->recordingHandle = 0;
+  state->inputRecordingIndex = 0;
 }
 
 function void
@@ -1143,6 +1188,52 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
                                             MEM_RESERVE|MEM_COMMIT, 
                                             PAGE_READWRITE);
   
+  for(int replayIndex = 0;
+      replayIndex < HS_ArrayCount(win32State.replayBuffers);
+      ++replayIndex)
+  {
+    win32_replay_buffer* replayBuffer = &win32State.replayBuffers[replayIndex];
+    Wi32GetInputFileLocation(&win32State, false, replayIndex, 
+                             sizeof(replayBuffer->fileName), 
+                             replayBuffer->fileName);
+    
+    replayBuffer->fileHandle = CreateFileA(replayBuffer->fileName, 
+                                           GENERIC_READ | GENERIC_WRITE, 
+                                           0,  0, CREATE_ALWAYS, 0, 0);
+    if(replayBuffer->fileHandle)
+    {
+      LARGE_INTEGER maxSize = {};
+      maxSize.QuadPart = win32State.gameMemorySize;
+      replayBuffer->memoryMap = CreateFileMappingA(replayBuffer->fileHandle, 
+                                                   0, PAGE_READWRITE, 
+                                                   maxSize.HighPart, 
+                                                   maxSize.LowPart, 
+                                                   0);
+      if(replayBuffer->memoryMap)
+      {
+        replayBuffer->memoryBlock = MapViewOfFile(replayBuffer->memoryMap, 
+                                                  FILE_MAP_ALL_ACCESS, 0, 0,
+                                                  win32State.gameMemorySize);
+        if(replayBuffer->memoryBlock)
+        {
+          //CopyMemory(replayBuffer->memoryBlock, win32State.gameMemoryBlock, win32State.gameMemorySize);
+        }
+        else
+        {
+          // TODO(Sebas): Log
+        }
+      }
+      else
+      {
+        // TODO(Sebas): Log
+      }
+    }
+    else
+    {
+      // TODO(Sebas): Log
+    }
+  }
+  
   gameMemory.permanentMemory = win32State.gameMemoryBlock;
   gameMemory.transientMemory = ((u8*)gameMemory.permanentMemory + gameMemory.permanentMemorySize);
   
@@ -1155,12 +1246,12 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   {
     HANDLE highResolutionTimer = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window->handle);
-    f32 targetFrameTimeSeconds = 1.0f / monitorRefreshRate;
+    f32 gameUpdateHz = monitorRefreshRate / 1.0f; 
+    f32 targetFrameTimeSeconds = 1.0f / gameUpdateHz;
     s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
     window->isActive = true;
-    
-    (void)monitorRefreshRate;
+    thread_thread thread = {};
     
     win32_frame_buffer* frameBuffer = &window->frameBuffer;
     Win32ResizeDIBSection(frameBuffer, window->handle, BUFFER_WIDTH, BUFFER_HEIGHT);
@@ -1169,10 +1260,12 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     game_input* oldInput = &inputs[0];
     game_input* newInput = &inputs[1];
     game_input playbackInput = {};
+    newInput->deltaTimeTicks = targetTicksPerFrame;
     
     win32_game_code gameCode = Win32LoadGameCode(sourceGameCodeDLLFullPath, tempGameCodeDLLFullPath);
     
     b32 gameIsPaused = false;
+    s32 frameRateAccumulater = 0;
     
     LARGE_INTEGER lastCounter = Win32GetWallClock();
     u64 lastCycleCount = __rdtsc();
@@ -1197,12 +1290,21 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       {
         newKeyboard->buttons[buttonIdx].transitionCount = 0;
       }
-      memset(newKeyboard->events, 0, HS_ArrayCount(newKeyboard->events));
+      memset(newKeyboard->events, 0, sizeof(newKeyboard->events));
+      memset(newKeyboard->textInput, 0, sizeof(newKeyboard->textInput));
       newKeyboard->eventCount = 0;
       newKeyboard->textLength = 0;
       
       Win32ProcessPendingMessages(window, newInput);
       Win32PollXInputControllers(oldInput, newInput);
+      
+      newKeyboard->buttons[HS_KEY_LBUTTON].endedDown = (GetKeyState(VK_LBUTTON) & 0x8000);
+      newKeyboard->buttons[HS_KEY_RBUTTON].endedDown = (GetKeyState(VK_RBUTTON) & 0x8000);
+      newKeyboard->buttons[HS_KEY_MBUTTON].endedDown = (GetKeyState(VK_MBUTTON) & 0x8000);
+      newKeyboard->buttons[HS_KEY_XBUTTON1].endedDown = (GetKeyState(VK_XBUTTON1) & 0x8000);
+      newKeyboard->buttons[HS_KEY_XBUTTON2].endedDown = (GetKeyState(VK_XBUTTON2) & 0x8000);
+      
+      //OutputDebugString(newKeyboard->textInput);
       
       if(false)
       {
@@ -1234,9 +1336,15 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         {
           switch(event->type)
           {
+            
             case INPUT_EVENT_KEY_DOWN:
             {
               
+              // TODO(Sebas): Move to WM_KEY_DOWN or build textInput from events rather than WM_CHAR
+              if(event->code == HS_KEY_RETURN && (event->modifiers == INPUT_MODS_SHIFT))
+              {
+                newKeyboard->textModeToggle = !newKeyboard->textModeToggle;
+              }
 #if HELIOS_DEBUG
               if(event->code == HS_KEY_TAB && (event->modifiers == INPUT_MODS_SHIFT))
               {
@@ -1301,7 +1409,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
         
         if(gameCode.UpdateAndRender)
         {
-          gameCode.UpdateAndRender(&gameMemory, &frameBuffer->gameFrameBuffer, input);
+          gameCode.UpdateAndRender(&thread, &gameMemory, &frameBuffer->gameFrameBuffer, input);
         }
       }
       
@@ -1317,11 +1425,6 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       s64 renderTicksElapsed = Win32GetTicksElapsed(renderStartCounter, renderEndCounter);
 #endif
       
-      game_input* temp = newInput;
-      newInput = oldInput;
-      oldInput = temp;
-      
-      
       LARGE_INTEGER workCounter = Win32GetWallClock();
       s64 workTicksElapsed = Win32GetTicksElapsed(lastCounter, workCounter);
       s64 ticksElapsed = workTicksElapsed;
@@ -1330,6 +1433,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       LARGE_INTEGER endCounter = workCounter;
       if(ticksToWait > 0 && ticksToWait <= S64Max)
       {
+        frameRateAccumulater = 0;
         f32 bufferZoneMS = 1.5f;
         s64 sleepTicksBufferZone = (s64)RoundF32(bufferZoneMS * TicksPerMS);
         if(ticksToWait > sleepTicksBufferZone)
@@ -1344,9 +1448,15 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       }
       else
       {
-        //HS_Assert(ticksElapsed > (targetTicksPerFrame * 2));
+        HS_Assert(frameRateAccumulater < 5);
+        frameRateAccumulater++;
       }
       
+      game_input* temp = newInput;
+      newInput = oldInput;
+      oldInput = temp;
+      
+      newInput->deltaTimeTicks = ticksElapsed;
       
       u64 endCycleCount = __rdtsc();
       u64 cyclesElapsed = endCycleCount - lastCycleCount;
@@ -1377,8 +1487,22 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       lastCounter = endCounter;
       lastCycleCount = endCycleCount;
       
+      
+      
     }
     CloseHandle(highResolutionTimer);
   }
+  
+  
+  for(int replayIndex = 0;
+      replayIndex < HS_ArrayCount(win32State.replayBuffers);
+      ++replayIndex)
+  {
+    win32_replay_buffer* replayBuffer = &win32State.replayBuffers[replayIndex];
+    
+    CloseHandle(replayBuffer->memoryMap);
+    CloseHandle(replayBuffer->fileHandle);
+  }
+  
   return 0;
 }

@@ -3,6 +3,8 @@
 #include "helios_math.h"
 #include "helios.h"
 
+#include <string.h>
+
 #define HS_ARGB(alpha, red, green, blue) ((alpha << 24) | (red << 16) | (green << 8)| (blue))
 
 function void
@@ -95,14 +97,12 @@ DEBUGRenderGrid(game_frame_buffer* buffer, u32 color, s32 xOffset=0, s32 yOffset
 }
 
 function void
-DEBUGRenderMouseCursor(game_frame_buffer* buffer, s32 mouseX, s32 mouseY, s32 width, s32 height)
+DEBUGRenderMouseCursor(game_frame_buffer* buffer, s32 mouseX, s32 mouseY, s32 width, s32 height, u32 color)
 {
   s32 halfWidth = (s32)(width/2.0f);
   s32 halfHeight = (s32)(height/2.0f);
   s32 newMouseX = HS_Clamp(0, mouseX - halfWidth, buffer->width - width);
   s32 newMouseY = HS_Clamp(0, mouseY - halfHeight, buffer->height - height);
-  
-  u32 color = HS_ARGB(255, 255, 255, 255);
   
   s32 top = newMouseY;
   s32 bottom = newMouseY + height;
@@ -167,14 +167,16 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     char* filename = __FILE__;
     
-    debug_read_file_result file = memory->DEBUGPlatformReadEntireFile(filename);
+    debug_read_file_result file = memory->DEBUGPlatformReadEntireFile(thread, filename);
     if(file.contents)
     {
-      memory->DEBUGPlatformWriteEntireFile("test.out", file.contentsSize, file.contents);
-      memory->DEBUGPlatformFreeFileMemory(file.contents);
+      memory->DEBUGPlatformWriteEntireFile(thread, "test.out", file.contentsSize, file.contents);
+      memory->DEBUGPlatformFreeFileMemory(thread, file.contents);
       file.contents = 0;
       file.contentsSize = 0;
     }
+    
+    gameState->mouseCursorColour = HS_ARGB(255, 255, 255, 255);
     
     //~ TODO(Sebas): This may be more appropriate to do in the platform layer.
     memory->isInitialized = true;
@@ -216,6 +218,54 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     //~ TODO(Sebas): Use digital movement tuning, and analog/real selector/mouse
     game_keyboard_input* input = &inputState->keyboard;
+    
+    if(input->buttons[HS_KEY_LBUTTON].endedDown)
+    {
+      gameState->mouseCursorColour = HS_ARGB(100, 100, 100, 255);
+      gameState->mouseCursorColourChanged = true;
+    }
+    else
+    {
+      //gameState->mouseCursorColourChanged = true;
+    }
+    
+    
+    for(u32 eventIndex = 0;
+        eventIndex < input->eventCount;
+        ++eventIndex)
+    {
+      game_input_event* event = &input->events[eventIndex];
+      if(!event->isProcessed)
+      {
+        switch(event->type)
+        {
+          case INPUT_EVENT_MOUSE_UP:
+          {
+            if(event->code == HS_KEY_LBUTTON)
+            {
+              if(!gameState->mouseCursorColourChanged)
+              {
+                gameState->mouseCursorColour = HS_ARGB(255, 255, 255, 255);
+                gameState->mouseCursorColourChanged = true;
+              }
+            }
+          } break;
+          case INPUT_EVENT_MOUSE_DOWN:
+          {
+            if(event->code == HS_KEY_LBUTTON)
+            {
+              if(!gameState->mouseCursorColourChanged)
+              {
+                gameState->mouseCursorColour = HS_ARGB(100, 100, 100, 255);
+                gameState->mouseCursorColourChanged = true;
+              }
+            }
+          } break;
+        }
+      }
+    }
+    
+    
     s32 speedX = 0;
     s32 speedY = 0;
     if(input->buttons[HS_KEY_W].endedDown)
@@ -236,6 +286,33 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
     gameState->cameraPosX += speedX;
     gameState->cameraPosY += speedY;
+    
+    // TODO(Sebas): Sync Textmode Toggle properly so as not to miss/get extra inputs.
+    if(((gameState->textLength + input->textLength) <= sizeof(gameState->textBuffer)) && input->textModeToggle)
+    {
+      for(int textIndex = 0;
+          textIndex < input->textLength;
+          ++textIndex)
+      {
+        char ch = input->textInput[textIndex];
+        if(ch == '\b')
+        {
+          --gameState->textLength;
+          gameState->textBuffer[gameState->textLength] = 0;
+        }
+        else
+        {
+          gameState->textBuffer[gameState->textLength++] = ch;
+        }
+      }
+    }
+    else
+    {
+      
+      memset(gameState->textBuffer, 0, sizeof(gameState->textBuffer));
+      gameState->textLength = 0;
+    }
+    
   }
   
 #if 1
@@ -248,7 +325,19 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   if(!inputState->isController)
   {
     game_keyboard_input* input = &inputState->keyboard;
-    DEBUGRenderMouseCursor(buffer, (s32)input->mouseX, (s32)input->mouseY, 11, 11);
+    
+    /*if(input->buttons[HS_KEY_LBUTTON].endedDown)
+    {
+      gameState->mouseCursorColour = HS_ARGB(100, 100, 100, 255);
+      gameState->mouseCursorColourChanged = true;
+    }
+    else
+    {
+      //gameState->mouseCursorColour = HS_ARGB(255, 255, 255, 255);
+    }*/
+    
+    DEBUGRenderMouseCursor(buffer, (s32)input->mouseX, (s32)input->mouseY, 11, 11, gameState->mouseCursorColour);
+    gameState->mouseCursorColourChanged = false;
   }
   else
   {
