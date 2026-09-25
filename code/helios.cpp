@@ -159,6 +159,101 @@ DEBUGRenderGradient(game_frame_buffer* buffer, s32 xOffset, s32 yOffset)
   }
 }
 
+function inline void
+RenderSetPixel(game_frame_buffer* buffer, s32 x, s32 y)
+{
+  if((x >= 0 ) && (x < buffer->width) && (y >= 0 ) && (x < buffer->width))
+  {
+    
+  }
+}
+
+function void 
+RenderCircle(game_frame_buffer* buffer, f32 posX, f32 posY, f32 radius, s32 colour)
+{
+  s32 offsetX = (s32)(posX + 0.5f);
+  s32 offsetY = (s32)(posY + 0.5f);
+  
+  s32 width = (s32)(radius + 0.5f);
+  s32 height = (s32)(radius + 0.5f);
+  
+  s32 left = offsetX - width; 
+  s32 right = offsetX + width;
+  s32 top = offsetY - height;
+  s32 bottom = offsetY + height;
+  
+  if((left < buffer->width) && (right > 0) && (top < buffer->height) && (bottom > 0))
+  {
+    top = (top >= 0) ? top : 0;
+    bottom = (bottom < buffer->height) ? bottom : buffer->height;
+    left = (left > 0) ? left : 0;
+    right = (right < buffer->width) ? right : buffer->width;
+    
+    s32 currentTop = offsetY - 1;
+    s32 currentBottom = offsetY;
+    
+    s32 r2 = width * width;
+    
+    s32 rowPos = HS_Clamp(0, buffer->pitch * offsetY, buffer->pitch * (buffer->height - 1));
+    s32 rowNeg =  HS_Clamp(0, buffer->pitch * (offsetY - 1), buffer->pitch * (buffer->height - 1));
+    s32 colPos = buffer->bytesPerPixel * offsetX;
+    s32 colNeg = buffer->bytesPerPixel * (offsetX - 1);
+    for(s32 y = 0;
+        y < height;
+        ++y)
+    {
+      u8* pixelYPosXPos = (u8*)buffer->memory + rowPos + colPos;
+      u8* pixelYPosXNeg = (u8*)buffer->memory + rowPos + colNeg; 
+      u8* pixelYNegXPos = (u8*)buffer->memory + rowNeg + colPos;
+      u8* pixelYNegXNeg = (u8*)buffer->memory + rowNeg + colNeg; 
+      
+      s32 y2MinusR2 = y * y - r2;
+      
+      b32 drawBottom = ((offsetY + y) >= 0 )&& ((offsetY + y) < buffer->height);
+      b32 drawTop = ((offsetY - y - 1) >= 0) && ((offsetY - y - 1) < buffer->height);
+      
+      if(drawBottom || drawTop)
+      {
+        for(s32 x = 0;
+            x < width;
+            ++x)
+        {
+          if((x * x + y2MinusR2) < 0 )
+          {
+            b32 drawRight = offsetX + x >= 0 && offsetX + x < buffer->width;
+            b32 drawLeft = offsetX - x - 1 >= 0 && offsetX - x - 1< buffer->width;
+            if(drawBottom && drawRight)
+            {
+              *((u32*)pixelYPosXPos) = colour;
+            }
+            
+            if(drawBottom && drawLeft)
+            {
+              *((u32*)pixelYPosXNeg) = colour;
+            }
+            
+            if(drawTop && drawLeft)
+            {
+              *((u32*)pixelYNegXNeg) = colour;
+            }
+            if(drawTop && drawRight)
+            {
+              *((u32*)pixelYNegXPos) = colour;
+            }
+          }
+          pixelYPosXPos += buffer->bytesPerPixel;
+          pixelYNegXPos += buffer->bytesPerPixel;
+          pixelYPosXNeg -= buffer->bytesPerPixel;
+          pixelYNegXNeg -= buffer->bytesPerPixel;
+          
+        }
+        rowPos += buffer->pitch;
+        rowNeg -= buffer->pitch;
+      }
+    }
+  }
+}
+
 GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   HS_Assert(sizeof(game_state) <= memory->permanentMemorySize);
@@ -320,7 +415,9 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #else
   DEBUGRenderGradient(buffer, gameState->cameraPosX, gameState->cameraPosY);
 #endif
-  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), gameState->cameraPosX, gameState->cameraPosY);
+  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), 0, 0);
+  
+  RenderCircle(buffer, gameState->cameraPosX, gameState->cameraPosY, 100.0f, HS_ARGB(255, 255, 0, 0));
   
   if(!inputState->isController)
   {

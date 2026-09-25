@@ -1170,7 +1170,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   
   game_memory gameMemory = {};
 #if HELIOS_DEBUG
-  LPVOID baseAddress = (LPVOID)HS_Terabytes(4);
+  LPVOID baseAddress = (LPVOID)HS_Terabytes(2);
   gameMemory.DEBUGPlatformReadEntireFile = &DEBUGPlatformReadEntireFile;
   gameMemory.DEBUGPlatformWriteEntireFile = &DEBUGPlatformWriteEntireFile;
   gameMemory.DEBUGPlatformFreeFileMemory = &DEBUGPlatformFreeFileMemory;
