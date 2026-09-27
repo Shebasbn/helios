@@ -210,5 +210,5 @@
     HS_KEY_ZOOM           = 0xFB,
     HS_KEY_NONAME         = 0xFC,
     HS_KEY_PA1            = 0xFD,
-    HS_KEY_OEM_CLEAR      = 0xFE
+    HS_KEY_OEM_CLEAR      = 0xFE,
 #endif

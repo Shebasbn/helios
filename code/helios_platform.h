@@ -57,6 +57,7 @@ extern "C"
     INPUT_EVENT_KEY_UP,
     INPUT_EVENT_MOUSE_DOWN,
     INPUT_EVENT_MOUSE_UP,
+    INPUT_EVENT_MOUSE_WHEEL,
     INPUT_EVENT_COUNT,
   };
   
@@ -74,6 +75,7 @@ extern "C"
     game_input_keycode code;
     f32 mouseX;
     f32 mouseY;
+    f32 wheelDelta;
     game_input_modifiers modifiers;
     b32 isProcessed;
   };
@@ -86,7 +88,7 @@ extern "C"
   
   struct game_analog_state
   {
-    vec2 unitVector;
+    vec2_f32 unitVector;
     f32 normalizedMagnitude;
   };
   
@@ -95,6 +97,7 @@ extern "C"
     f32 mouseX;
     f32 mouseY;
     game_button_state buttons[256];
+    f32 mouseWheelDelta;
     
     game_input_modifiers currentModifiers;
     
@@ -118,7 +121,7 @@ extern "C"
       {
         union
         {
-          vec2 stickLeftVec;
+          vec2_f32 stickLeftVec;
           struct
           {
             f32 stickLeftX;
@@ -136,7 +139,7 @@ extern "C"
       {
         union
         {
-          vec2 stickRightVec;
+          vec2_f32 stickRightVec;
           struct
           {
             f32 stickRightX;

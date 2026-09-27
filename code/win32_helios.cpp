@@ -370,7 +370,7 @@ Win32GetWallClock(void)
 function inline s64
 Win32GetTicksElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
 {
-  s64 result = (s64)RoundF64((f32)(end.QuadPart - start.QuadPart) / (f32)GlobalPerfCounterFrequencyTicks);
+  s64 result = (s64)RoundF64ToS64((f64)(end.QuadPart - start.QuadPart) / (f64)GlobalPerfCounterFrequencyTicks);
   return result;
 }
 
@@ -534,7 +534,7 @@ Win32ProcessKeyboardMessage(game_button_state* newState, b32 isDown)
 }
 
 function void
-Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type, game_input_keycode code, game_input_modifiers mods, f32 mouseX, f32 mouseY)
+Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type, game_input_keycode code, game_input_modifiers mods, f32 mouseX, f32 mouseY, f32 wheelDelta=0)
 {
   HS_Assert(input->eventCount < MAX_FRAME_EVENTS && "Ran out of available slots for events!");
   if(input->eventCount < MAX_FRAME_EVENTS)
@@ -546,6 +546,7 @@ Win32CreateKeyboardEvent(game_keyboard_input* input, game_input_event_type type,
     event->mouseY = mouseY;
     event->modifiers = mods;
     event->isProcessed = false;
+    event->wheelDelta = wheelDelta;
   }
   else
   {
@@ -809,6 +810,29 @@ Win32ProcessPendingMessages(win32_window* window,
         sprintf(strBuffer, "MousePos(x,y): (%.02f, %.02f)\n", input->mouseX, input->mouseY);
         OutputDebugString(strBuffer);
 #endif
+      } break;
+      case WM_MOUSEWHEEL:
+      {
+        if(gameInput->accumulater > 30)
+        {
+          gameInput->isController = false;
+        }
+        
+        input->mouseWheelDelta = (f32)GET_WHEEL_DELTA_WPARAM(message.wParam) / (f32)WHEEL_DELTA;
+        s32 sx = GET_X_LPARAM(message.lParam); 
+        s32 sy = GET_Y_LPARAM(message.lParam);
+        POINT mousePos = {sx, sy}; 
+        ScreenToClient(window->handle, &mousePos);
+        input->mouseX = (f32)mousePos.x; 
+        input->mouseY = (f32)mousePos.y; 
+        game_input_event_type eventType = INPUT_EVENT_MOUSE_WHEEL;
+        Win32CreateKeyboardEvent(input, eventType, HS_KEY_NIL, input->currentModifiers, input->mouseX, input->mouseY, input->mouseWheelDelta);
+#if 0
+        char buffer[256];
+        sprintf(buffer, "wdt - %f, (%.2f, %.2f).\n", input->mouseWheelDelta, input->mouseX, input->mouseY);
+        OutputDebugString(buffer);
+#endif
+        //Win32ProcessMouseButtons(gameInput, HS_KEY_MBUTTON, isDown, message.lParam);
       } break;
       case WM_CHAR:
       {
@@ -1248,7 +1272,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window->handle);
     f32 gameUpdateHz = monitorRefreshRate / 1.0f; 
     f32 targetFrameTimeSeconds = 1.0f / gameUpdateHz;
-    s64 targetTicksPerFrame = (s64)RoundF32(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
+    s64 targetTicksPerFrame = RoundF64ToS64(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
     window->isActive = true;
     thread_thread thread = {};
@@ -1260,7 +1284,6 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     game_input* oldInput = &inputs[0];
     game_input* newInput = &inputs[1];
     game_input playbackInput = {};
-    newInput->deltaTimeTicks = targetTicksPerFrame;
     
     win32_game_code gameCode = Win32LoadGameCode(sourceGameCodeDLLFullPath, tempGameCodeDLLFullPath);
     
@@ -1294,6 +1317,8 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       memset(newKeyboard->textInput, 0, sizeof(newKeyboard->textInput));
       newKeyboard->eventCount = 0;
       newKeyboard->textLength = 0;
+      newKeyboard->mouseWheelDelta = 0;
+      newInput->deltaTimeTicks = targetTicksPerFrame;
       
       Win32ProcessPendingMessages(window, newInput);
       Win32PollXInputControllers(oldInput, newInput);
@@ -1435,7 +1460,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       {
         frameRateAccumulater = 0;
         f32 bufferZoneMS = 1.5f;
-        s64 sleepTicksBufferZone = (s64)RoundF32(bufferZoneMS * TicksPerMS);
+        s64 sleepTicksBufferZone = RoundF64ToS64(bufferZoneMS * TicksPerMS);
         if(ticksToWait > sleepTicksBufferZone)
         {
           Win32HighResolutionSleep(highResolutionTimer, ticksToWait - sleepTicksBufferZone);
@@ -1456,7 +1481,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       newInput = oldInput;
       oldInput = temp;
       
-      newInput->deltaTimeTicks = ticksElapsed;
+      //newInput->deltaTimeTicks = ticksElapsed;
       
       u64 endCycleCount = __rdtsc();
       u64 cyclesElapsed = endCycleCount - lastCycleCount;
