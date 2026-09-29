@@ -60,8 +60,8 @@ load_paths =
 
 commands =
 {
-  .Sebas_f1 =      { .win = "raddbg --ipc kill_all && build.bat",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
-  .Sebas_f2 =      { .win = "raddbg --ipc kill_all && rmdir /s /q build", .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .Sebas_f1 =      { .win = "build.bat",.linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
+  .Sebas_f2 =      { .win = "raddbg --ipc kill_all && rmdir /s /q build && build.bat", .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
   .Sebas_f3 =      { .win = "raddbg --ipc kill_all && raddbg --ipc run",  .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
   .build_clean =   { .win = "raddbg --ipc kill_all && rmdir /s /q build", .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },
   .build = { .win = "build.bat",                         .linux = "", .out = "*compilation*", .footer_panel = true, .save_dirty_files = true, .cursor_at_end = false, },

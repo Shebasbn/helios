@@ -13,16 +13,16 @@ enum game_colour_format
 
 struct game_colour
 {
+  f32 alpha;
   f32 red;
   f32 green;
   f32 blue;
-  f32 alpha;
   game_colour_format format;
 };
 
 struct game_camera
 {
-  vec2_f64 worldHUPos;
+  vec2_f64 systemHUPos;
   vec2_f32 screenPixelPos;
   vec2_f64 targetWorldHUPos;
   s32 zoomLevel;
@@ -46,22 +46,66 @@ enum class system_body_type
   Star,
   Planet,
   Moon,
-  Satellite,
-  Ship,
+  AsteroidBelt,
+};
+
+//struct body_id
+//{
+//body_id parentID;
+//u32 relativeID;
+//};
+
+struct body_generation_info
+{
+  char* name;
+  system_body_type type;
+  b32 isRoot;
+  game_colour colour;
+  f64 mass;
+  f64 radiusM;
+  f64 avgDistanceFromParent;
+  f64 argumentOfPeriapsisDeg;
+  f64 eccentricity;
+};
+
+struct system_generation_info
+{
+  body_generation_info* systemGenBodies;
+  u32 systemGenBodyCount;
+};
+
+struct keplerian_body 
+{
+  // Permanent Orbital Elements (Set once at spawn)
+  //f64 gravityParameter; // G * Mass of Parent
+  f64 semiMajorAxis;
+  f64 semiMinorAxis;
+  f64 eccentricity;            // Orbit shape (0 = perfect circle)
+  f64 meanMotion;
+  f64 argumentOfPeriapsis;
+  
+  // Dynamic State Variables (Changes every frame)
+  f64 meanAnomaly;            // Track progress along the orbit
+  vec2_f64 position;              // Current position in meters
 };
 
 struct system_body 
 {
-  u32 ID;
+  u32 bodyID;
   u32 parentID;
-  u32 firstChildID;
-  u32 nextID;
-  u32 prevID;
+  
   system_body_type type;
-  vec2_f32 worldRelHUPos;
-  vec2_f64 worldHUPos;
-  f64 worldHURadius;
+  //vec2_f32 worldRelHUPos;
+  //vec2_f64 worldHUPos;
+  
+  keplerian_body keplerBody;
+  
+  vec2_f64 systemHUPos;
+  //vec2_f32 bodyRelHUPos;
   vec2_f32 screenPixelPos;
+  
+  f64 radiusHU;
+  f64 mass;
   f32 screenPixelRadius;
   game_colour colour;
   char* name;
@@ -73,11 +117,26 @@ struct system_body
 #define NilID (u32)system_body_type::Nil
 struct star_system
 {
-  system_body bodies[MAX_SYSTEM_BODY_COUNT];
+  u32 systemID;
   s32 bodyCount;
-  u32 rootBodyID;
+  system_body* bodies;
+  //u32 rootBodyID;
 };
 
+struct galaxy
+{
+  u32 minSystemGenCount;
+  u32 maxSystemGenCount;
+  s32 systemCount;
+  star_system* systems;
+};
+
+struct memory_arena
+{
+  void* memory;
+  memory_index offset;
+  u64 size;
+};
 
 #define GAME_EXPORT no_name_mangle
 #define GAME_TEXT_BUFFER_MAX_SIZE 256
@@ -92,6 +151,10 @@ struct game_state
   b32 mouseCursorColourChanged;
   vec2_f32 mouseScreenPosPixels;
   vec2_f32 mouseWorldPosHU;
+  
+  memory_arena galaxyArena;
+  galaxy Galaxy;
+  u32 currentSystemID;
   
   s32 textLength;
   char textBuffer[GAME_TEXT_BUFFER_MAX_SIZE];

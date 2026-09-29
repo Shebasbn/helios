@@ -322,50 +322,135 @@ RenderCircle(game_frame_buffer* buffer, f32 posX, f32 posY, f32 radius, game_col
   }
 }
 
-function vec2_f32 WorldToScreenPos(game_camera* camera, f64 worldMetersX, f64 worldMetersY)
+function vec2_f32 WorldToScreenPos(game_camera* camera, f64 systemMetersX, f64 systemMetersY)
 {
   vec2_f32 screenPosPixel = {};
   
-  f32 worldHUX = (worldMetersX / camera->metersPerHU);
-  f32 worldHUY = (worldMetersY / camera->metersPerHU);
+  f32 systemHUX = (systemMetersX / camera->metersPerHU);
+  f32 systemHUY = (systemMetersY / camera->metersPerHU);
   
-  screenPosPixel.x = ((worldHUX - camera->worldHUPos.x) * camera->scalePixelsPerHU) + camera->screenPixelPos.x;
-  screenPosPixel.y = ((worldHUY - camera->worldHUPos.y) * camera->scalePixelsPerHU) + camera->screenPixelPos.y;
+  screenPosPixel.x = ((systemHUX - camera->systemHUPos.x) * camera->scalePixelsPerHU) + camera->screenPixelPos.x;
+  screenPosPixel.y = ((systemHUY - camera->systemHUPos.y) * camera->scalePixelsPerHU) + camera->screenPixelPos.y;
   
   return screenPosPixel;
 }
 
 function vec2_f64 ScreenToWorldPos(game_camera* camera, f32 screenPixelX, f32 screenPixelY)
 {
-  vec2_f64 worldPosHU = {};
+  vec2_f64 systemPosHU = {};
   
-  worldPosHU.x = ((screenPixelX - camera->screenPixelPos.x) / camera->scalePixelsPerHU) + camera->worldHUPos.x;
-  worldPosHU.x = ((screenPixelY - camera->screenPixelPos.y) / camera->scalePixelsPerHU) + camera->worldHUPos.y ;
+  systemPosHU.x = ((screenPixelX - camera->screenPixelPos.x) / camera->scalePixelsPerHU) + camera->systemHUPos.x;
+  systemPosHU.x = ((screenPixelY - camera->screenPixelPos.y) / camera->scalePixelsPerHU) + camera->systemHUPos.y ;
   
-  return worldPosHU;
+  return systemPosHU;
 }
 
 read_only global f64 GravitationalConstant = 6.6743e-11;
+read_only global f32 MetersPerHU;
 
-function inline f64 CalculateBodyMeanMotion(f64 massParent, f64 massChild, f64 semiMajor)
+function void
+ArenaInit(memory_arena* arena, u64 size, void* memory)
 {
-  f64 result = SqrtF64(
-                       (GravitationalConstant * (massParent + massChild)) / (semiMajor * semiMajor * semiMajor));
+  arena->memory = memory;
+  arena->offset = 0;
+  arena->size = size;
+};
+
+function void*
+ArenaPush(memory_arena* arena, u64 size)
+{
+  memory_index newOffset = arena->offset + size;
+  HS_Assert(newOffset < arena->size);
+  void* result = (u8*)arena->memory + newOffset;
+  arena->offset = newOffset;
+  return result;
+};
+
+#define PushType(arena, type, count) (type*)ArenaPush(arena, sizeof(type) * count)
+#define PushStruct(arena, type) (type*)ArenaPush(arena, sizeof(type))
+#define PushArray(arena, array) ArenaPush(arena, sizeof(array))
+
+function inline f64 
+CalculateBodyMeanMotion(f64 massParent, f64 massChild, f64 semiMajor)
+{
+  f64 result = SqrtF64((GravitationalConstant * (massParent + massChild)) / 
+                       (semiMajor * semiMajor * semiMajor));
   return result;
 }
+
+function inline f64
+CalculateBodySemiMinorAxis(f64 semiMajorAxis, f64 eccentricity)
+{
+  f64 semiMinorAxis = (semiMajorAxis * SqrtF64(1.0 - (eccentricity * eccentricity)));
+  return semiMinorAxis;
+}
+
+f64 SolveKeplersEquations(f64 meanAnomaly, f64 eccentricity)
+{
+  f64 eccentricAnomaly = meanAnomaly; // Initial guess
+  f64 precisionTolerance = 1e-12;
+  s32 maxSteps = 100;
+  
+  for (s32 i = 0; i < maxSteps; i++)
+  {
+    // f(E) = E - e*sin(E) - M
+    f64 functionValue = eccentricAnomaly - (eccentricity * SinF64(eccentricAnomaly)) - meanAnomaly;
+    
+    // f'(E) = 1 - e*cos(E)
+    f64 derivativeValue = 1.0 - (eccentricity * CosF64(eccentricAnomaly));
+    
+    f64 correction = functionValue / derivativeValue;
+    eccentricAnomaly -= correction;
+    
+    if (AbsF64(correction) < precisionTolerance)
+    {
+      break; // Successfully converged!
+    }
+  }
+  
+  return eccentricAnomaly;
+}
+
+function void 
+UpdateBodyOrbit(keplerian_body* body, f64 deltaTime)
+{
+  f64 semiMajorCubed = body->semiMajorAxis * body->semiMajorAxis * body->semiMajorAxis;
+  //f64 meanMotion = SqrtF64(body->gravityParameter / semiMajorCubed);
+  
+  body->meanAnomaly += body->meanMotion * deltaTime;
+  
+  body->meanAnomaly = ModF64(body->meanAnomaly, 2.0 * PiF64);
+  if(body->meanAnomaly < 0)
+  {
+    body->meanAnomaly += 2.0 * PiF64;
+  }
+  
+  f64 eccentricAnomaly = SolveKeplersEquations(body->meanAnomaly, body->eccentricity);
+  
+  f64 cosE = CosF64(eccentricAnomaly);
+  f64 sinE = SinF64(eccentricAnomaly);
+  
+  f64 localX = (body->semiMajorAxis * cosE) - (body->semiMajorAxis * body->eccentricity);
+  f64 localY = body->semiMinorAxis * sinE;
+  f64 cosOmega = CosF64(body->argumentOfPeriapsis);
+  f64 sinOmega = SinF64(body->argumentOfPeriapsis);
+  
+  body->position.x = (localX * cosOmega) - (localY * sinOmega);
+  body->position.y = -((localX * sinOmega) + (localY * cosOmega));
+};
 
 function inline system_body*
 GetSystemBodyFromID(star_system* system, u32 bodyID)
 {
-  system_body* result = &system->bodies[NilID];
-  if((bodyID != NilID) && (bodyID <= system->bodyCount))
+  system_body* result = 0;
+  if(bodyID < system->bodyCount)
   {
     result = &system->bodies[bodyID];
   }
   return result;
 }
 
-
+#if 0
 function inline system_body*
 GetSystemBodyFirstChild(star_system* system, system_body* body)
 {
@@ -505,8 +590,8 @@ function u32
 CreateSystemBody(star_system* system, 
                  system_body_type type,
                  char* bodyName,
-                 vec2_f32 worldRelHUPos, 
-                 f64 worldHURadius, 
+                 vec2_f32 bodyRelHUPos, 
+                 f64 radiusHU, 
                  game_colour colour,
                  u32 parentID=NilID,
                  b32 isRendered=true)
@@ -517,9 +602,9 @@ CreateSystemBody(star_system* system,
   body->ID = newID;
   body->type = type;
   body->name = bodyName;
-  //body->worldHUPos = worldHUPos;
-  body->worldRelHUPos = worldRelHUPos;
-  body->worldHURadius = worldHURadius;
+  //body->systemHUPos = systemHUPos;
+  body->bodyRelHUPos = bodyRelHUPos;
+  body->radiusHU = radiusHU;
   body->colour = colour;
   body->firstChildID = NilID;
   body->nextID = body->ID;
@@ -534,26 +619,135 @@ CreateSystemBody(star_system* system,
   SystemAddBody(system, body);
   return body->ID;
 }
+#endif
+//////////////////////////////////////////////////////////////////
+
+
+function void
+GenerateSolarSystem(memory_arena* arena, star_system* systems, u32 systemID, f32 metersPerHU)
+{
+  star_system* system = &systems[systemID];
+  system->systemID = systemID;
+  
+  body_generation_info systemGenBodies[] =
+  {
+#define BODY(name,type,isRoot,...) {HS_Stringify(name),system_body_type::##type,isRoot, __VA_ARGS__},
+#include "helios_bodygen_table.inl"
+#undef BODY
+  };
+  
+  system_generation_info systemGenInfo = {};
+  
+  if(systemID == 0)
+  {
+    systemGenInfo.systemGenBodies = systemGenBodies;
+    systemGenInfo.systemGenBodyCount = HS_ArrayCount(systemGenBodies);
+  }
+  else
+  {
+    // TODO(Sebas): Generate Random System
+    //GenerateRandomSystem(&systemGenInfo);
+    systemGenInfo.systemGenBodies = systemGenBodies;
+    systemGenInfo.systemGenBodyCount = HS_ArrayCount(systemGenBodies);
+  }
+  
+  system->bodyCount = systemGenInfo.systemGenBodyCount;
+  system->bodies = PushType(arena, system_body, system->bodyCount);
+  
+  u32 lastStarID = 0;
+  u32 lastPlanetID = 0;
+  u32 lastMoonID = 0;
+  u32 lastAsteroidBeltID = 0;
+  
+  for(u32 bodyID = 0;
+      bodyID < system->bodyCount;
+      ++bodyID)
+  {
+    system_body* body = &system->bodies[bodyID];
+    body_generation_info* genBody = &systemGenInfo.systemGenBodies[bodyID];
+    body->bodyID = bodyID;
+    body->type = genBody->type;
+    body->name = genBody->name;
+    body->colour = genBody->colour;
+    body->shouldRender = true;
+    switch(body->type)
+    {
+      case system_body_type::Star:
+      {
+        body->parentID = 0;
+        lastStarID = body->bodyID;
+      } break;
+      case system_body_type::Planet:
+      {
+        body->parentID = lastStarID;
+        lastPlanetID = body->bodyID;
+      } break;
+      case system_body_type::Moon:
+      {
+        body->parentID = lastPlanetID;
+        lastMoonID = body->bodyID;
+      } break;
+      case system_body_type::AsteroidBelt:
+      {
+        body->parentID = lastStarID;
+        lastAsteroidBeltID = body->bodyID;
+      } break;
+    }
+    system_body* parentBody = &system->bodies[body->parentID];
+    body->mass = genBody->mass;
+    body->radiusHU = genBody->radiusM / metersPerHU;
+    keplerian_body* keplerBody = &body->keplerBody;
+    // TODO(Sebas): Binary Star system Calculations
+    if(body->parentID != body->bodyID)
+    {
+      
+      keplerBody->semiMajorAxis = genBody->avgDistanceFromParent;
+      keplerBody->eccentricity = genBody->eccentricity;
+      keplerBody->semiMinorAxis = CalculateBodySemiMinorAxis(keplerBody->semiMajorAxis, 
+                                                             keplerBody->eccentricity);
+      
+      keplerBody->meanMotion = CalculateBodyMeanMotion(parentBody->mass, 
+                                                       body->mass, 
+                                                       keplerBody->semiMajorAxis);
+      keplerBody->argumentOfPeriapsis = RadsFromDegreesF64(genBody->argumentOfPeriapsisDeg);
+    }
+  }
+}
+
+function void 
+GenerateGalaxy(memory_arena* arena, galaxy* Galaxy, s32 minSystemGenCount, s32 maxSystemGenCount, f32 metersPerHU)
+{
+  Galaxy->systemCount = RandS32(minSystemGenCount, maxSystemGenCount);
+  Galaxy->systems = PushType(arena, star_system, Galaxy->systemCount);
+  
+  for(u32 systemID = 0;
+      systemID < Galaxy->systemCount;
+      ++systemID)
+  {
+    GenerateSolarSystem(arena, Galaxy->systems, systemID, metersPerHU);
+  }
+  
+};
 
 function vec2_f64 
-CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 worldHUX, f64 worldHUY)
+CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 systemHUX, f64 systemHUY)
 {
-  vec2_f64 result = camera->worldHUPos;
-  f64 smallestMagnitude = Vec2F64Magnitude(camera->worldHUPos.x - worldHUX, camera->worldHUPos.y - worldHUY);
+  vec2_f64 result = camera->systemHUPos;
+  f64 smallestMagnitude = Vec2F64Magnitude(camera->systemHUPos.x - systemHUX, camera->systemHUPos.y - systemHUY);
   
   f32 threshold = 20 / camera->scalePixelsPerHU;
   
-  for(u32 bodyIndex = 1;
-      bodyIndex <= system->bodyCount;
+  for(u32 bodyIndex = 0;
+      bodyIndex < system->bodyCount;
       ++bodyIndex)
   {
     system_body* body = GetSystemBodyFromID(system, bodyIndex);
-    vec2_f64 vec = Vec2F64(body->worldHUPos.x - worldHUX, body->worldHUPos.y - worldHUY);
+    vec2_f64 vec = Vec2F64(body->systemHUPos.x - systemHUX, body->systemHUPos.y - systemHUY);
     f64 magnitude = Vec2F64Magnitude(vec.x, vec.y);
     if(magnitude < smallestMagnitude)
     {
       smallestMagnitude = magnitude;
-      result = {body->worldHUPos.x, body->worldHUPos.y};
+      result = {body->systemHUPos.x, body->systemHUPos.y};
     }
     
     if(smallestMagnitude < threshold)
@@ -564,7 +758,9 @@ CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 worldHU
   return result;
 }
 
-
+// TODO(Sebas): See what is salvagable
+////////////////////////////////////
+#if 0
 function vec2_f64
 GetSystemBodyWorldHUPos(star_system* system, system_body* body)
 {
@@ -573,31 +769,36 @@ GetSystemBodyWorldHUPos(star_system* system, system_body* body)
   system_body* it = body;
   while(it->type != system_body_type::Nil)
   {
-    result.x += it->worldRelHUPos.x;
-    result.y += it->worldRelHUPos.y;
+    result.x += it->bodyRelHUPos.x;
+    result.y += it->bodyRelHUPos.y;
     it = GetSystemBodyFromID(system, it->parentID);
   }
   return result;
 }
-
+#endif
+//////////////////////////////////////
 function inline f32
-GetSystemBodyScreenRadius(game_camera* camera, system_body_type type, f64 worldHURadius)
+GetSystemBodyScreenRadius(game_camera* camera, system_body_type type, f64 radiusHU)
 {
   f32 minRadius = 0;
   if(type == system_body_type::Star)
   {
-    minRadius = 20;
+    minRadius = 30;
   }
   else if(type == system_body_type::Planet)
   {
     minRadius = 10;
   }
-  else if((type == system_body_type::Satellite) || (type == system_body_type::Ship))
+  else if(type == system_body_type::Moon)
   {
     minRadius = 5;
   }
+  /*else if((type == system_body_type::Satellite) || (type == system_body_type::Ship))
+  {
+    minRadius = 5;
+  }*/
   
-  f32 result = HS_Max(worldHURadius * camera->scalePixelsPerHU, minRadius);
+  f32 result = HS_Max(radiusHU * camera->scalePixelsPerHU, minRadius);
   return result;
 }
 
@@ -637,98 +838,50 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   HS_Assert(sizeof(game_state) <= memory->permanentMemorySize);
   game_state* gameState = (game_state*)memory->permanentMemory;
   game_camera* camera = &gameState->camera;
-  local_persist star_system system;
+  
+  galaxy* Galaxy;
+  star_system* system;
+  //local_persist f64 meanAnomaly;
   if(!memory->isInitialized)
   {
-    char* filename = __FILE__;
-    
-    debug_read_file_result file = memory->DEBUGPlatformReadEntireFile(thread, filename);
-    if(file.contents)
-    {
-      memory->DEBUGPlatformWriteEntireFile(thread, "test.out", file.contentsSize, file.contents);
-      memory->DEBUGPlatformFreeFileMemory(thread, file.contents);
-      file.contents = 0;
-      file.contentsSize = 0;
-    }
     gameState->mouseUpColour = CreateGameColourARGB(1.0f, 1.0f, 1.0f, 1.0f);
     gameState->mouseDownColour = CreateGameColourARGB(1.0f, 0.5f, 0.5f, 0.5f);
     gameState->mouseCursorColour = gameState->mouseUpColour;
     gameState->drawCursor = true;
+    ArenaInit(&gameState->galaxyArena, memory->permanentMemorySize - sizeof(game_state), (u8*)memory->permanentMemory + sizeof(game_state));
+    Galaxy = &gameState->Galaxy;
     
     camera->metersPerHU = 1000000000.0f;
-    camera->zoomLevelMin = -20;;
+    GenerateGalaxy(&gameState->galaxyArena, Galaxy, 50, 100, camera->metersPerHU);
+    /*Galaxy->systemCount = 1;//
+    Galaxy->systems = PushType(&gameState->galaxyArena, star_system, Galaxy->systemCount);*/
+    
+    gameState->currentSystemID = 0;
+    //system->bodies = PushType(&gameState->galaxyArena, system_body, MAX_SYSTEM_BODY_COUNT);
+    
+    
+    camera->zoomLevelMin = -20;
     camera->zoomLevelMax = 40;
     camera->zoomLevel = 0;
-    camera->zoomBase = 1.35f;     // 35% increase/decrease to scale per zoom level
+    camera->zoomBase = 1.25f;     // 35% increase/decrease to scale per zoom level
     camera->defaultPixelsPerHU = 100.0f; // at zoom level 0
     camera->scalePixelsPerHU = camera->defaultPixelsPerHU;
     camera->targetScalePixelsPerHU = camera->scalePixelsPerHU;
-    camera->worldHUPos = {};
+    camera->systemHUPos = {};
     // TODO(Sebas): Should Camera Screen Pixel position change if buffer width/height is different than window width/height?
-    camera->screenPixelPos = {(f32)buffer->width/2.0f, (f32)buffer->height/2.0f};
     
     
-    system = {};
-    CreateSystemBody(&system, 
-                     system_body_type::Star,
-                     "Sun",
-                     Vec2F32(0, 0),
-                     6.957e8 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 1.0f, 0.8745f, 0.0f));
+    //system = GenerateSolarSystem(&gameState->galaxyArena);
     
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Mercury",
-                     Vec2F32(0, 5.79e10 / camera->metersPerHU),
-                     2.4397e6 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.553, 0.553, 0.561));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Venus",
-                     Vec2F32(-1.08e11 / camera->metersPerHU, 0),
-                     6.0518e6 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.890, 0.855, 0.800));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Earth",
-                     Vec2F32(1.50e11 / camera->metersPerHU, 0),
-                     6.3781e6 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.169, 0.447, 0.714));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Mars",
-                     Vec2F32(0, -2.28e11 / camera->metersPerHU),
-                     3.3962e6 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.757, 0.451, 0.286));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Jupiter",
-                     Vec2F32(7.78e11 / camera->metersPerHU, 0),
-                     7.1492e7 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.722, 0.545, 0.400));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Saturn",
-                     Vec2F32(1.43e12 / camera->metersPerHU, 0),
-                     6.0268e7 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.882, 0.800, 0.627));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Uranus",
-                     Vec2F32(2.87e12 / camera->metersPerHU, 0),
-                     2.5559e7 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.659, 0.847, 0.871));
-    CreateSystemBody(&system, 
-                     system_body_type::Planet,
-                     "Neptune",
-                     Vec2F32(4.50e12 / camera->metersPerHU, 0),
-                     2.4764e7 / camera->metersPerHU, 
-                     CreateGameColourARGB(1.0f, 0.294, 0.439, 0.882));
     
     
     //~ TODO(Sebas): This may be more appropriate to do in the platform layer.
     memory->isInitialized = true;
   }
+  Galaxy = &gameState->Galaxy;
+  system = &Galaxy->systems[gameState->currentSystemID];
+  
+  camera->screenPixelPos = {(f32)buffer->width/2.0f, (f32)buffer->height/2.0f};
   
   //camera->screenPixelPos = {(f32)buffer->width/2.0f, (f32)buffer->height/2.0f};
   
@@ -779,13 +932,13 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     f64 frameTargetWorldHUY = camera->targetWorldHUPos.y;
     f64 frameTargetScalePixelsPerHU = camera->targetScalePixelsPerHU;
     
-    camera->worldHUPos.x = LerpF64(camera->worldHUPos.x, 
-                                   frameTargetWorldHUX, 
-                                   t);
+    camera->systemHUPos.x = LerpF64(camera->systemHUPos.x, 
+                                    frameTargetWorldHUX, 
+                                    t);
     
-    camera->worldHUPos.y = LerpF64(camera->worldHUPos.y, 
-                                   frameTargetWorldHUY, 
-                                   t);
+    camera->systemHUPos.y = LerpF64(camera->systemHUPos.y, 
+                                    frameTargetWorldHUY, 
+                                    t);
     
     camera->scalePixelsPerHU = LerpF64(camera->scalePixelsPerHU, frameTargetScalePixelsPerHU, t);
     
@@ -867,10 +1020,10 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             
             camera->zoomLevel += (event->wheelDelta > 0) ? 1 : (event->wheelDelta < 0) ? -1 : 0;
             HS_Clamp(camera->zoomLevelMin, camera->zoomLevel, camera->zoomLevelMax);
-            f64 newMouseX = ((event->mouseX - camera->screenPixelPos.x) / camera->scalePixelsPerHU) + camera->worldHUPos.x;
-            f64 newMouseY = ((event->mouseY - camera->screenPixelPos.y) / camera->scalePixelsPerHU)  + camera->worldHUPos.y;
+            f64 newMouseX = ((event->mouseX - camera->screenPixelPos.x) / camera->scalePixelsPerHU) + camera->systemHUPos.x;
+            f64 newMouseY = ((event->mouseY - camera->screenPixelPos.y) / camera->scalePixelsPerHU)  + camera->systemHUPos.y;
             
-            camera->targetWorldHUPos = CameraGetNearestSystemBody(&system, camera, newMouseX, newMouseY);
+            camera->targetWorldHUPos = CameraGetNearestSystemBody(system, camera, newMouseX, newMouseY);
             
             event->isProcessed = true;
           }break;
@@ -909,39 +1062,47 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   
   
   // TODO(Sebas):  Update Relative Positions
+  //f64 timestep = (86400.0 / 4);
   
+  
+  
+  f64 timestep = 86400.0 * 10.0;
   
   RenderRectangle(buffer, 0, 0, (f32)buffer->width, (f32)buffer->height, CreateGameColourARGB(1.0, 0.0, 0.0, 0.0));
   
   // TODO(Sebas): Make sure system array is sorted by parenID 0 -> high
-  for(u32 bodyIndex = 1;
-      bodyIndex <= system.bodyCount;
+  for(u32 bodyIndex = 0;
+      bodyIndex < system->bodyCount;
       ++bodyIndex)
   {
     
-    system_body* body = GetSystemBodyFromID(&system, bodyIndex);
-    body->worldHUPos = {};
+    system_body* body = &system->bodies[bodyIndex];
+    body->systemHUPos = {};
     f32 parentRadius = 0;
-    system_body* parent = &system.bodies[NilID];
-    if(body->parentID != NilID)
+    system_body* parent = 0;
+    if(body->parentID != body->bodyID)
     {
-      parent = GetSystemBodyFromID(&system, body->parentID);
-      body->worldHUPos.x = parent->worldHUPos.x;  
-      body->worldHUPos.y = parent->worldHUPos.y;
+      parent = &system->bodies[body->parentID];
+      body->systemHUPos.x = parent->systemHUPos.x;  
+      body->systemHUPos.y = parent->systemHUPos.y;
       body->shouldRender = parent->shouldRender;
     }
+    keplerian_body* keplerBody = &body->keplerBody;
     
-    body->worldHUPos.x += body->worldRelHUPos.x;
-    body->worldHUPos.y += body->worldRelHUPos.y;
+    UpdateBodyOrbit(keplerBody, timestep * inputState->deltaTimeTicks * SecondsPerTick);
+    keplerBody->position.x /= camera->metersPerHU;
+    keplerBody->position.y /= camera->metersPerHU;
+    body->systemHUPos.x += body->keplerBody.position.x;
+    body->systemHUPos.y += body->keplerBody.position.y;
     
-    f32 screenRadius = GetSystemBodyScreenRadius(camera, body->type, body->worldHURadius);
+    f32 screenRadius = GetSystemBodyScreenRadius(camera, body->type, body->radiusHU);
     
-    body->screenPixelPos.x = ((body->worldHUPos.x - camera->worldHUPos.x) * camera->scalePixelsPerHU) + camera->screenPixelPos.x;
-    body->screenPixelPos.y = ((body->worldHUPos.y - camera->worldHUPos.y) * camera->scalePixelsPerHU) + camera->screenPixelPos.y;
+    body->screenPixelPos.x = ((body->systemHUPos.x - camera->systemHUPos.x) * camera->scalePixelsPerHU) + camera->screenPixelPos.x;
+    body->screenPixelPos.y = ((body->systemHUPos.y - camera->systemHUPos.y) * camera->scalePixelsPerHU) + camera->screenPixelPos.y;
     
-    if(body->shouldRender && (parent->type != system_body_type::Nil))
+    if(body->shouldRender && (parent != 0))
     {
-      parentRadius = GetSystemBodyScreenRadius(camera, parent->type, body->worldHURadius);
+      parentRadius = GetSystemBodyScreenRadius(camera, parent->type, body->radiusHU);
       f32 left = body->screenPixelPos.x - screenRadius;
       f32 right = body->screenPixelPos.x + screenRadius;
       f32 top = body->screenPixelPos.y - screenRadius;
@@ -968,14 +1129,9 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
   
   
-  
-  //vec2_f64 bodyWorldHUPos[SYSTEM_BODY_COUNT] = {0, 0};
-  
-  
-  
-  //DEBUGRenderBackground(buffer, HS_ARGB(255, 0, 0, 0));
-  //DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), 0, 0);
-  
+#if 0
+  DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), 0, 0);
+#endif
   
   //RenderRectangle(buffer, earthScreenPosPixels.x, earthScreenPosPixels.y, earthScreenPosPixels.x + 50.0, earthScreenPosPixels.y + 50, CreateGameColourARGB(1.0, 1.0, 1.0, 1.0));
   //RenderCircle(buffer, gameState->cameraPosX, gameState->cameraPosY, 100.0f, HS_ARGB(255, 255, 0, 0));

@@ -166,6 +166,8 @@ typedef s64      b64;
 typedef float    f32;
 typedef double   f64;
 
+typedef u64 memory_index;
+
 ////////////////////////////////////////////////////////////////
 //~ Sebas: Helper Macros
 

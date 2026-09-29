@@ -8,10 +8,13 @@
 #endif
 
 #include "math.h"
+#include "stdlib.h"
 
 
 read_only global f32 EulersNumberF32 = 2.7182818284f;
 read_only global f64 EulersNumberF64 = 2.7182818284590452353602874713527;
+read_only global f32 PiF32 = 3.14159265358979323846f;
+read_only global f64 PiF64 = 3.14159265358979323846;
 
 function inline f32 SinF32(f32 x)
 {
@@ -23,6 +26,36 @@ function inline f64 SinF64(f64 x)
 {
   f64 result = sin(x);
   return result;
+}
+
+function inline f32 CosF32(f32 x)
+{
+  f32 result = cosf(x);
+  return result;
+}
+
+function inline f64 CosF64(f64 x)
+{
+  f64 result = cos(x);
+  return result;
+}
+
+function inline f64 Atan2F64(f64 x, f64 y)
+{
+  f64 result = atan2(x, y);
+  return result;
+}
+
+function inline f64 RadsFromDegreesF64(f64 degrees)
+{
+  f64 radians = degrees * (PiF64 / 180.0); 
+  return radians;
+}
+
+function inline f64 DegreesFromRadsF64(f64 radians)
+{
+  f64 degrees = radians * (180.0/PiF64); 
+  return degrees;
 }
 
 function inline f32 SqrtF32(f32 x)
@@ -119,6 +152,12 @@ function inline s32 ModS32(s32 a, s32 b)
   return result < 0 ? result + AbsS32(b) : result; 
 }
 
+function inline f64 ModF64(f64 a, f64 b)
+{
+  f64 result = fmod(a, b);
+  return result;
+};
+
 function inline f32 LerpF32(f32 a, f32 b, f32 t)
 {
   f32 result = a + (b - a)*t;
@@ -132,6 +171,13 @@ function inline f64 LerpF64(f64 a, f64 b, f64 t)
   {
     result = a + (b - a)*t;
   }
+  return result;
+}
+
+
+function inline s32 RandS32(s32 min, s32 max)
+{
+  s32 result = ((rand() % ((max + 1) - min)) + min);
   return result;
 }
 
