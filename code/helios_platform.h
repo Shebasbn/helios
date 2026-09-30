@@ -179,6 +179,7 @@ extern "C"
     };
   };
   
+  
   struct game_input
   {
     b32 isController;

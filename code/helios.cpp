@@ -729,13 +729,14 @@ GenerateGalaxy(memory_arena* arena, galaxy* Galaxy, s32 minSystemGenCount, s32 m
   
 };
 
-function vec2_f64 
+function u32 
 CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 systemHUX, f64 systemHUY)
 {
-  vec2_f64 result = camera->systemHUPos;
+  //vec2_f64 result = camera->systemHUPos;
+  u32 result = camera->oldTargetBodyID;
   f64 smallestMagnitude = Vec2F64Magnitude(camera->systemHUPos.x - systemHUX, camera->systemHUPos.y - systemHUY);
   
-  f32 threshold = 20 / camera->scalePixelsPerHU;
+  f32 threshold = 1 / camera->scalePixelsPerHU;
   
   for(u32 bodyIndex = 0;
       bodyIndex < system->bodyCount;
@@ -747,7 +748,8 @@ CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 systemH
     if(magnitude < smallestMagnitude)
     {
       smallestMagnitude = magnitude;
-      result = {body->systemHUPos.x, body->systemHUPos.y};
+      //result = {body->systemHUPos.x, body->systemHUPos.y};
+      result = bodyIndex;
     }
     
     if(smallestMagnitude < threshold)
@@ -926,21 +928,34 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->drawCursor = true;
     
     
-    f64 t = (1 - PowF32(EulersNumberF64, -10*(inputState->deltaTimeTicks * SecondsPerTick)));
-    
-    f64 frameTargetWorldHUX = camera->targetWorldHUPos.x; 
-    f64 frameTargetWorldHUY = camera->targetWorldHUPos.y;
+    /*f64 t = (1 - PowF32(EulersNumberF64, -10*(inputState->deltaTimeTicks * SecondsPerTick)));
     f64 frameTargetScalePixelsPerHU = camera->targetScalePixelsPerHU;
+    camera->scalePixelsPerHU = LerpF64(camera->scalePixelsPerHU, frameTargetScalePixelsPerHU, t);*/
     
-    camera->systemHUPos.x = LerpF64(camera->systemHUPos.x, 
-                                    frameTargetWorldHUX, 
+    /*
+    f64 frameTargetSystemHUX = camera->targetSystemHUPos.x; 
+    f64 frameTargetSystemHUY = camera->targetSystemHUPos.y;
+    
+    
+    f64 magnitude = Vec2F64Magnitude((frameTargetSystemHUX - camera->systemHUPos.x), (frameTargetSystemHUY - camera->systemHUPos.y)); 
+    f32 screenMagnitude = magnitude * camera->scalePixelsPerHU;
+    
+    if(screenMagnitude < 50.0)
+    {
+      camera->isMoving = false;
+    }*/
+    
+    /*camera->systemHUPos.x = LerpF64(camera->systemHUPos.x, 
+                                    frameTargetSystemHUX, 
                                     t);
     
     camera->systemHUPos.y = LerpF64(camera->systemHUPos.y, 
-                                    frameTargetWorldHUY, 
-                                    t);
+                                    frameTargetSystemHUY, 
+                                    t);*/
     
-    camera->scalePixelsPerHU = LerpF64(camera->scalePixelsPerHU, frameTargetScalePixelsPerHU, t);
+    
+    /*f64 dx = AbsF64((frameTargetSystemHUX - camera->systemHUPos.x)); 
+    f64 dy = AbsF64((frameTargetSystemHUY - camera->systemHUPos.y)); */
     
     
     if(input->buttons[HS_KEY_LBUTTON].endedDown)
@@ -973,12 +988,11 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     speedY *= inputState->deltaTimeTicks * SecondsPerTick;
     speedX *= inputState->deltaTimeTicks * SecondsPerTick;
     
-    if(true)
-    {
-      camera->targetWorldHUPos.x += speedX;
-      camera->targetWorldHUPos.y += speedY;
-      camera->isMoving = ((speedX != 0) || (speedY != 0));
-    }
+    
+    camera->isZooming = false;
+    
+    camera->deltaSystemHUPos.x += speedX;
+    camera->deltaSystemHUPos.y += speedY;
     
     // TODO(Sebas): Sync Textmode Toggle properly so as not to miss/get extra inputs.
     if(((gameState->textLength + input->textLength) <= sizeof(gameState->textBuffer)) && input->textModeToggle)
@@ -1022,9 +1036,12 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             HS_Clamp(camera->zoomLevelMin, camera->zoomLevel, camera->zoomLevelMax);
             f64 newMouseX = ((event->mouseX - camera->screenPixelPos.x) / camera->scalePixelsPerHU) + camera->systemHUPos.x;
             f64 newMouseY = ((event->mouseY - camera->screenPixelPos.y) / camera->scalePixelsPerHU)  + camera->systemHUPos.y;
-            
-            camera->targetWorldHUPos = CameraGetNearestSystemBody(system, camera, newMouseX, newMouseY);
-            
+            camera->newTargetBodyID = CameraGetNearestSystemBody(system, camera, newMouseX, newMouseY);
+            if(camera->newTargetBodyID != camera->oldTargetBodyID)
+            {
+              camera->isMoving = true;
+            }
+            camera->isZooming = true;
             event->isProcessed = true;
           }break;
           case INPUT_EVENT_MOUSE_UP:
@@ -1057,10 +1074,15 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
   // NOTE(Sebas):  End of Input Processing
   
-  
   camera->targetScalePixelsPerHU = camera->defaultPixelsPerHU * PowF32(camera->zoomBase, camera->zoomLevel);
+  f64 dScale = camera->targetScalePixelsPerHU - camera->scalePixelsPerHU;
+  f64 smoothFactorScale = 10;
+  f64 interpolatedScale = dScale * smoothFactorScale * inputState->deltaTimeTicks * SecondsPerTick;
+  camera->scalePixelsPerHU += interpolatedScale;
   
-  
+  /*f64 t = (1 - PowF32(EulersNumberF64, -10*(inputState->deltaTimeTicks * SecondsPerTick)));
+    f64 frameTargetScalePixelsPerHU = camera->targetScalePixelsPerHU;
+    camera->scalePixelsPerHU = LerpF64(camera->scalePixelsPerHU, frameTargetScalePixelsPerHU, t);*/
   // TODO(Sebas):  Update Relative Positions
   //f64 timestep = (86400.0 / 4);
   
@@ -1071,14 +1093,24 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   RenderRectangle(buffer, 0, 0, (f32)buffer->width, (f32)buffer->height, CreateGameColourARGB(1.0, 0.0, 0.0, 0.0));
   
   // TODO(Sebas): Make sure system array is sorted by parenID 0 -> high
+  
+  /*gameState->accumulatorTicks += inputState->deltaTimeTicks;
+  u64 updateHZTicks = RoundPosF64ToS64((1.0f * TicksPerSecond)/60.0f);
+  
+  s32 updateCount = gameState->accumulatorTicks / updateHZTicks;
+  
+  while(gameState->accumulatorTicks >= updateHZTicks)
+  {*/
   for(u32 bodyIndex = 0;
       bodyIndex < system->bodyCount;
       ++bodyIndex)
   {
-    
     system_body* body = &system->bodies[bodyIndex];
+    
+    /*body->systemHUPos.x = body->nextSystemHUPos.x;
+    body->systemHUPos.y = body->nextSystemHUPos.y;*/
+    
     body->systemHUPos = {};
-    f32 parentRadius = 0;
     system_body* parent = 0;
     if(body->parentID != body->bodyID)
     {
@@ -1092,8 +1124,100 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     UpdateBodyOrbit(keplerBody, timestep * inputState->deltaTimeTicks * SecondsPerTick);
     keplerBody->position.x /= camera->metersPerHU;
     keplerBody->position.y /= camera->metersPerHU;
+    
     body->systemHUPos.x += body->keplerBody.position.x;
     body->systemHUPos.y += body->keplerBody.position.y;
+  }
+  //gameState->accumulatorTicks -= updateHZTicks;
+  //}
+  
+  //f64 alpha = (f64)gameState->accumulatorTicks / (f64)updateHZTicks;
+  
+  /*
+  for(u32 bodyIndex = 0;
+      bodyIndex < system->bodyCount;
+      ++bodyIndex)
+  {
+    system_body* body = &system->bodies[bodyIndex];
+    system_body* parent = 0;
+    f32 parentRadius = 0;
+    
+    body->systemHUPos.x += (body->nextSystemHUPos.x - body->systemHUPos.x) * alpha;
+    body->systemHUPos.y += (body->nextSystemHUPos.y - body->systemHUPos.y) * alpha;
+  }*/
+  
+  system_body* targetBody = GetSystemBodyFromID(system, camera->newTargetBodyID);
+  
+  camera->targetSystemHUPos = targetBody->systemHUPos;
+  
+  if(camera->isZooming)
+  {
+    camera->deltaSystemHUPos = {};
+  }
+  
+  camera->isMoving = false;
+  
+  f64 systemDeltaX = camera->targetSystemHUPos.x - camera->systemHUPos.x;
+  f64 systemDeltaY = camera->targetSystemHUPos.y - camera->systemHUPos.y;
+  
+  f64 smoothFactor = 10;
+  
+  f64 screenDeltaX = systemDeltaX * camera->scalePixelsPerHU;
+  f64 screenDeltaY = systemDeltaY * camera->scalePixelsPerHU;
+  
+  f64 systemMagnitude = Vec2Magnitude(systemDeltaX, systemDeltaY);
+  f64 screenMagnitude = systemMagnitude * camera->scalePixelsPerHU;
+  
+  if(systemMagnitude >= 10)
+  {
+    smoothFactor = 10;
+  }
+  else
+  {
+    smoothFactor = 100;
+  }
+  f64 interpolatedScreenDeltaX = screenDeltaX * smoothFactor * inputState->deltaTimeTicks * SecondsPerTick;
+  f64 interpolatedScreenDeltaY = screenDeltaY * smoothFactor * inputState->deltaTimeTicks * SecondsPerTick;
+  
+  camera->systemHUPos.x += interpolatedScreenDeltaX / camera->scalePixelsPerHU;
+  camera->systemHUPos.y += interpolatedScreenDeltaY / camera->scalePixelsPerHU;
+  
+  
+  
+  systemDeltaX = camera->targetSystemHUPos.x - camera->systemHUPos.x;
+  systemDeltaY = camera->targetSystemHUPos.y - camera->systemHUPos.y;
+  
+  systemMagnitude = Vec2Magnitude(systemDeltaX, systemDeltaY);
+  screenMagnitude = systemMagnitude * camera->scalePixelsPerHU;
+  
+  
+  if(systemMagnitude < 0.5 && screenMagnitude > 10)
+  {
+    camera->systemHUPos.x = camera->targetSystemHUPos.x;
+    camera->systemHUPos.y = camera->targetSystemHUPos.y;
+  }
+  camera->systemDeltaX = systemDeltaX;
+  camera->systemDeltaY = systemDeltaY;
+  
+  
+  camera->systemHUPos.x += camera->deltaSystemHUPos.x;
+  camera->systemHUPos.y += camera->deltaSystemHUPos.y;
+  
+  
+  for(u32 bodyIndex = 0;
+      bodyIndex < system->bodyCount;
+      ++bodyIndex)
+  {
+    system_body* body = &system->bodies[bodyIndex];
+    system_body* parent = 0;
+    f32 parentRadius = 0;
+    if(body->parentID != body->bodyID)
+    {
+      parent = &system->bodies[body->parentID];
+    }
+    
+    //body->systemHUPos.x += (body->nextSystemHUPos.x - body->systemHUPos.x) * alpha;
+    //body->systemHUPos.y += (body->nextSystemHUPos.y - body->systemHUPos.y) * alpha;
     
     f32 screenRadius = GetSystemBodyScreenRadius(camera, body->type, body->radiusHU);
     
@@ -1128,6 +1252,8 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
   
+  
+  camera->oldTargetBodyID = camera->newTargetBodyID;
   
 #if 0
   DEBUGRenderGrid(buffer, HS_ARGB(255, 255, 255, 255), 0, 0);

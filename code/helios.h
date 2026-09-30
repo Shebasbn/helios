@@ -24,14 +24,21 @@ struct game_camera
 {
   vec2_f64 systemHUPos;
   vec2_f32 screenPixelPos;
-  vec2_f64 targetWorldHUPos;
+  vec2_f64 targetSystemHUPos;
+  vec2_f64 deltaSystemHUPos;
+  
+  u32 newTargetBodyID;
+  u32 oldTargetBodyID;
   s32 zoomLevel;
   s32 zoomLevelMin;
   s32 zoomLevelMax;
   f32 zoomBase;
   
+  f64 systemDeltaX;
+  f64 systemDeltaY;
+  
   b32 isMoving;
-  //b32 isZooming;
+  b32 isZooming;
   
   f32 defaultPixelsPerHU;
   //vec2_f32 screenDim;
@@ -100,6 +107,7 @@ struct system_body
   
   keplerian_body keplerBody;
   
+  vec2_f64 nextSystemHUPos;
   vec2_f64 systemHUPos;
   //vec2_f32 bodyRelHUPos;
   vec2_f32 screenPixelPos;
@@ -155,6 +163,8 @@ struct game_state
   memory_arena galaxyArena;
   galaxy Galaxy;
   u32 currentSystemID;
+  
+  u64 accumulatorTicks;
   
   s32 textLength;
   char textBuffer[GAME_TEXT_BUFFER_MAX_SIZE];

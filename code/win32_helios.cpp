@@ -1481,7 +1481,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
       newInput = oldInput;
       oldInput = temp;
       
-      //newInput->deltaTimeTicks = ticksElapsed;
+      newInput->deltaTimeTicks = ticksElapsed;
       
       u64 endCycleCount = __rdtsc();
       u64 cyclesElapsed = endCycleCount - lastCycleCount;
