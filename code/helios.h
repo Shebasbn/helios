@@ -118,6 +118,7 @@ struct system_body
   game_colour colour;
   char* name;
   b32 shouldRender;
+  b32 hasBeenUpdated;
 };
 
 

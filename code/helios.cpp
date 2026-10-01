@@ -1093,62 +1093,49 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   RenderRectangle(buffer, 0, 0, (f32)buffer->width, (f32)buffer->height, CreateGameColourARGB(1.0, 0.0, 0.0, 0.0));
   
   // TODO(Sebas): Make sure system array is sorted by parenID 0 -> high
-  
-  /*gameState->accumulatorTicks += inputState->deltaTimeTicks;
-  u64 updateHZTicks = RoundPosF64ToS64((1.0f * TicksPerSecond)/60.0f);
-  
-  s32 updateCount = gameState->accumulatorTicks / updateHZTicks;
-  
-  while(gameState->accumulatorTicks >= updateHZTicks)
-  {*/
-  for(u32 bodyIndex = 0;
-      bodyIndex < system->bodyCount;
-      ++bodyIndex)
-  {
-    system_body* body = &system->bodies[bodyIndex];
-    
-    /*body->systemHUPos.x = body->nextSystemHUPos.x;
-    body->systemHUPos.y = body->nextSystemHUPos.y;*/
-    
-    body->systemHUPos = {};
-    system_body* parent = 0;
-    if(body->parentID != body->bodyID)
-    {
-      parent = &system->bodies[body->parentID];
-      body->systemHUPos.x = parent->systemHUPos.x;  
-      body->systemHUPos.y = parent->systemHUPos.y;
-      body->shouldRender = parent->shouldRender;
-    }
-    keplerian_body* keplerBody = &body->keplerBody;
-    
-    UpdateBodyOrbit(keplerBody, timestep * inputState->deltaTimeTicks * SecondsPerTick);
-    keplerBody->position.x /= camera->metersPerHU;
-    keplerBody->position.y /= camera->metersPerHU;
-    
-    body->systemHUPos.x += body->keplerBody.position.x;
-    body->systemHUPos.y += body->keplerBody.position.y;
-  }
-  //gameState->accumulatorTicks -= updateHZTicks;
-  //}
-  
-  //f64 alpha = (f64)gameState->accumulatorTicks / (f64)updateHZTicks;
-  
-  /*
-  for(u32 bodyIndex = 0;
-      bodyIndex < system->bodyCount;
-      ++bodyIndex)
-  {
-    system_body* body = &system->bodies[bodyIndex];
-    system_body* parent = 0;
-    f32 parentRadius = 0;
-    
-    body->systemHUPos.x += (body->nextSystemHUPos.x - body->systemHUPos.x) * alpha;
-    body->systemHUPos.y += (body->nextSystemHUPos.y - body->systemHUPos.y) * alpha;
-  }*/
-  
   system_body* targetBody = GetSystemBodyFromID(system, camera->newTargetBodyID);
-  
-  camera->targetSystemHUPos = targetBody->systemHUPos;
+  if(targetBody)
+  {
+    u32 bodyIDs[10] = {};
+    s32 bodyCount = 0;
+    system_body* body = targetBody;
+    while(body->parentID != body->bodyID)
+    {
+      HS_Assert(bodyCount < 10);
+      bodyIDs[bodyCount++] = body->bodyID;
+      body = GetSystemBodyFromID(system, body->parentID);
+    }
+    bodyIDs[bodyCount++] = body->bodyID;
+    
+    for(s32 index = bodyCount-1;
+        index >= 0;
+        --index)
+    {
+      body = GetSystemBodyFromID(system, bodyIDs[index]);
+      body->systemHUPos = {};
+      system_body* parent = 0;
+      if(body->parentID != body->bodyID)
+      {
+        parent = &system->bodies[body->parentID];
+        body->systemHUPos.x = parent->systemHUPos.x;  
+        body->systemHUPos.y = parent->systemHUPos.y;
+      }
+      keplerian_body* keplerBody = &body->keplerBody;
+      
+      UpdateBodyOrbit(keplerBody, timestep * inputState->deltaTimeTicks * SecondsPerTick);
+      keplerBody->position.x /= camera->metersPerHU;
+      keplerBody->position.y /= camera->metersPerHU;
+      
+      body->systemHUPos.x += body->keplerBody.position.x;
+      body->systemHUPos.y += body->keplerBody.position.y;
+      body->hasBeenUpdated = true;
+    }
+    camera->targetSystemHUPos = targetBody->systemHUPos;
+  }
+  else
+  {
+    camera->targetSystemHUPos = camera->systemHUPos;
+  }
   
   if(camera->isZooming)
   {
@@ -1182,8 +1169,6 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   camera->systemHUPos.x += interpolatedScreenDeltaX / camera->scalePixelsPerHU;
   camera->systemHUPos.y += interpolatedScreenDeltaY / camera->scalePixelsPerHU;
   
-  
-  
   systemDeltaX = camera->targetSystemHUPos.x - camera->systemHUPos.x;
   systemDeltaY = camera->targetSystemHUPos.y - camera->systemHUPos.y;
   
@@ -1210,14 +1195,31 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     system_body* body = &system->bodies[bodyIndex];
     system_body* parent = 0;
-    f32 parentRadius = 0;
     if(body->parentID != body->bodyID)
     {
       parent = &system->bodies[body->parentID];
+      body->shouldRender = parent->shouldRender;
     }
+    if(!body->hasBeenUpdated)
+    {
+      body->systemHUPos = {};
+      if(parent)
+      {
+        body->systemHUPos.x = parent->systemHUPos.x;  
+        body->systemHUPos.y = parent->systemHUPos.y;
+      }
+      keplerian_body* keplerBody = &body->keplerBody;
+      
+      UpdateBodyOrbit(keplerBody, timestep * inputState->deltaTimeTicks * SecondsPerTick);
+      keplerBody->position.x /= camera->metersPerHU;
+      keplerBody->position.y /= camera->metersPerHU;
+      
+      body->systemHUPos.x += body->keplerBody.position.x;
+      body->systemHUPos.y += body->keplerBody.position.y;
+    }
+    body->hasBeenUpdated = false;
     
-    //body->systemHUPos.x += (body->nextSystemHUPos.x - body->systemHUPos.x) * alpha;
-    //body->systemHUPos.y += (body->nextSystemHUPos.y - body->systemHUPos.y) * alpha;
+    f32 parentRadius = 0;
     
     f32 screenRadius = GetSystemBodyScreenRadius(camera, body->type, body->radiusHU);
     
