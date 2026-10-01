@@ -195,13 +195,13 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
            (fileSizeU32 == bytesRead))
         {
           //~ NOTE(Sebas): File Read Successfully
-          result.contentsSize = bytesRead;
+          result.contentSize = bytesRead;
         }
         else
         {
           //~ TODO(Sebas): Logging
           DEBUGPlatformFreeFileMemory(thread, result.contents);
-          result.contentsSize = 0;
+          result.contentSize = 0;
         }
       }
       else
@@ -1275,7 +1275,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
     s64 targetTicksPerFrame = RoundF64ToS64(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     
     window->isActive = true;
-    thread_thread thread = {};
+    thread_context thread = {};
     
     win32_frame_buffer* frameBuffer = &window->frameBuffer;
     Win32ResizeDIBSection(frameBuffer, window->handle, BUFFER_WIDTH, BUFFER_HEIGHT);

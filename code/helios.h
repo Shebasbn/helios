@@ -47,90 +47,21 @@ struct game_camera
   f32 targetScalePixelsPerHU;
 };
 
-enum class system_body_type
+struct memory_arena
 {
-  Nil = 0,
-  Star,
-  Planet,
-  Moon,
-  AsteroidBelt,
+  void* memory;
+  memory_index offset;
+  u64 size;
 };
 
-//struct body_id
-//{
-//body_id parentID;
-//u32 relativeID;
-//};
+function void ArenaInit(memory_arena* arena, u64 size, void* memory);
+function void* ArenaPush(memory_arena* arena, u64 size);
+#define PushType(arena, type, count) (type*)ArenaPush(arena, sizeof(type) * count)
+#define PushStruct(arena, type) (type*)ArenaPush(arena, sizeof(type))
+#define PushArray(arena, array) ArenaPush(arena, sizeof(array))
+#define PushSize(arena, size, count) ArenaPush(arena, size * count)
 
-struct body_generation_info
-{
-  char* name;
-  system_body_type type;
-  b32 isRoot;
-  game_colour colour;
-  f64 mass;
-  f64 radiusM;
-  f64 avgDistanceFromParent;
-  f64 argumentOfPeriapsisDeg;
-  f64 eccentricity;
-};
-
-struct system_generation_info
-{
-  body_generation_info* systemGenBodies;
-  u32 systemGenBodyCount;
-};
-
-struct keplerian_body 
-{
-  // Permanent Orbital Elements (Set once at spawn)
-  //f64 gravityParameter; // G * Mass of Parent
-  f64 semiMajorAxis;
-  f64 semiMinorAxis;
-  f64 eccentricity;            // Orbit shape (0 = perfect circle)
-  f64 meanMotion;
-  f64 argumentOfPeriapsis;
-  
-  // Dynamic State Variables (Changes every frame)
-  f64 meanAnomaly;            // Track progress along the orbit
-  vec2_f64 position;              // Current position in meters
-};
-
-struct system_body 
-{
-  u32 bodyID;
-  u32 parentID;
-  
-  system_body_type type;
-  //vec2_f32 worldRelHUPos;
-  //vec2_f64 worldHUPos;
-  
-  keplerian_body keplerBody;
-  
-  vec2_f64 nextSystemHUPos;
-  vec2_f64 systemHUPos;
-  //vec2_f32 bodyRelHUPos;
-  vec2_f32 screenPixelPos;
-  
-  f64 radiusHU;
-  f64 mass;
-  f32 screenPixelRadius;
-  game_colour colour;
-  char* name;
-  b32 shouldRender;
-  b32 hasBeenUpdated;
-};
-
-
-#define MAX_SYSTEM_BODY_COUNT 50
-#define NilID (u32)system_body_type::Nil
-struct star_system
-{
-  u32 systemID;
-  s32 bodyCount;
-  system_body* bodies;
-  //u32 rootBodyID;
-};
+#include "helios_body.h"
 
 struct galaxy
 {
@@ -140,11 +71,13 @@ struct galaxy
   star_system* systems;
 };
 
-struct memory_arena
+struct game_bitmap
 {
   void* memory;
-  memory_index offset;
-  u64 size;
+  s32 width;
+  s32 height;
+  s32 pitch;
+  s32 bytesPerPixel;
 };
 
 #define GAME_EXPORT no_name_mangle
@@ -166,6 +99,8 @@ struct game_state
   u32 currentSystemID;
   
   u64 accumulatorTicks;
+  
+  game_bitmap bitmap;
   
   s32 textLength;
   char textBuffer[GAME_TEXT_BUFFER_MAX_SIZE];

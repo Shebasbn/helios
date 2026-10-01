@@ -30,6 +30,53 @@ CreateGameColourARGB(f32 alpha, f32 red, f32 green, f32 blue)
   return result;
 }
 
+function void
+RenderBitmap(game_frame_buffer* buffer,
+             game_bitmap* bitmap)
+{
+  s32 width = (bitmap->width < buffer->width) ? bitmap->width : buffer->width;
+  s32 height = (bitmap->height < buffer->height) ? bitmap->height : buffer->height;
+  /*
+  s32 minX = RoundF32ToS32(x - (f32)width/2.0);
+  s32 minY = RoundF32ToS32(y - (f32)height/2.0);
+  s32 maxX = RoundF32ToS32(x + (f32)width/2.0);
+  s32 maxY = RoundF32ToS32(y + (f32)height/2.0);
+  
+  minX = (minX > 0) ? minX : 0;
+  minY = (minY > 0) ? minY : 0;
+  maxX = (maxX < buffer->width) ? maxX : buffer->width;
+  maxY = (maxY < buffer->height) ? maxY : buffer->height;
+  */
+  
+  s32 minX = 0;
+  s32 minY = 0;
+  u8* destRow = (u8*)buffer->memory + buffer->pitch * minY + buffer->bytesPerPixel * minX;
+  u8* srcRow = (u8*)bitmap->memory;
+  for(u32 y = 0;
+      y < height;
+      ++y)
+  {
+    u32* srcPixel = (u32*)srcRow;
+    u32* destPixel = (u32*)destRow;
+    for(u32 x = 0;
+        x < width;
+        ++x)
+    {
+      u32 colour = *srcPixel++;
+      if((colour >> 24))
+      {
+        *destPixel = colour;
+      }
+      else
+      {
+        *destPixel = *destPixel;
+      }
+      ++destPixel;
+    }
+    srcRow += bitmap->pitch;
+    destRow += buffer->pitch;
+  }
+}
 
 function void
 RenderRectangle(game_frame_buffer* buffer, f32 fMinX, f32 fMinY, f32 fMaxX, f32 fMaxY, game_colour color)
@@ -345,16 +392,13 @@ function vec2_f64 ScreenToWorldPos(game_camera* camera, f32 screenPixelX, f32 sc
   return systemPosHU;
 }
 
-read_only global f64 GravitationalConstant = 6.6743e-11;
-read_only global f32 MetersPerHU;
-
 function void
 ArenaInit(memory_arena* arena, u64 size, void* memory)
 {
   arena->memory = memory;
   arena->offset = 0;
   arena->size = size;
-};
+}
 
 function void*
 ArenaPush(memory_arena* arena, u64 size)
@@ -364,354 +408,6 @@ ArenaPush(memory_arena* arena, u64 size)
   void* result = (u8*)arena->memory + newOffset;
   arena->offset = newOffset;
   return result;
-};
-
-#define PushType(arena, type, count) (type*)ArenaPush(arena, sizeof(type) * count)
-#define PushStruct(arena, type) (type*)ArenaPush(arena, sizeof(type))
-#define PushArray(arena, array) ArenaPush(arena, sizeof(array))
-
-function inline f64 
-CalculateBodyMeanMotion(f64 massParent, f64 massChild, f64 semiMajor)
-{
-  f64 result = SqrtF64((GravitationalConstant * (massParent + massChild)) / 
-                       (semiMajor * semiMajor * semiMajor));
-  return result;
-}
-
-function inline f64
-CalculateBodySemiMinorAxis(f64 semiMajorAxis, f64 eccentricity)
-{
-  f64 semiMinorAxis = (semiMajorAxis * SqrtF64(1.0 - (eccentricity * eccentricity)));
-  return semiMinorAxis;
-}
-
-f64 SolveKeplersEquations(f64 meanAnomaly, f64 eccentricity)
-{
-  f64 eccentricAnomaly = meanAnomaly; // Initial guess
-  f64 precisionTolerance = 1e-12;
-  s32 maxSteps = 100;
-  
-  for (s32 i = 0; i < maxSteps; i++)
-  {
-    // f(E) = E - e*sin(E) - M
-    f64 functionValue = eccentricAnomaly - (eccentricity * SinF64(eccentricAnomaly)) - meanAnomaly;
-    
-    // f'(E) = 1 - e*cos(E)
-    f64 derivativeValue = 1.0 - (eccentricity * CosF64(eccentricAnomaly));
-    
-    f64 correction = functionValue / derivativeValue;
-    eccentricAnomaly -= correction;
-    
-    if (AbsF64(correction) < precisionTolerance)
-    {
-      break; // Successfully converged!
-    }
-  }
-  
-  return eccentricAnomaly;
-}
-
-function void 
-UpdateBodyOrbit(keplerian_body* body, f64 deltaTime)
-{
-  f64 semiMajorCubed = body->semiMajorAxis * body->semiMajorAxis * body->semiMajorAxis;
-  //f64 meanMotion = SqrtF64(body->gravityParameter / semiMajorCubed);
-  
-  body->meanAnomaly += body->meanMotion * deltaTime;
-  
-  body->meanAnomaly = ModF64(body->meanAnomaly, 2.0 * PiF64);
-  if(body->meanAnomaly < 0)
-  {
-    body->meanAnomaly += 2.0 * PiF64;
-  }
-  
-  f64 eccentricAnomaly = SolveKeplersEquations(body->meanAnomaly, body->eccentricity);
-  
-  f64 cosE = CosF64(eccentricAnomaly);
-  f64 sinE = SinF64(eccentricAnomaly);
-  
-  f64 localX = (body->semiMajorAxis * cosE) - (body->semiMajorAxis * body->eccentricity);
-  f64 localY = body->semiMinorAxis * sinE;
-  f64 cosOmega = CosF64(body->argumentOfPeriapsis);
-  f64 sinOmega = SinF64(body->argumentOfPeriapsis);
-  
-  body->position.x = (localX * cosOmega) - (localY * sinOmega);
-  body->position.y = -((localX * sinOmega) + (localY * cosOmega));
-};
-
-function inline system_body*
-GetSystemBodyFromID(star_system* system, u32 bodyID)
-{
-  system_body* result = 0;
-  if(bodyID < system->bodyCount)
-  {
-    result = &system->bodies[bodyID];
-  }
-  return result;
-}
-
-#if 0
-function inline system_body*
-GetSystemBodyFirstChild(star_system* system, system_body* body)
-{
-  system_body* result = &system->bodies[0];
-  
-  u32 firstChildID = body->firstChildID;
-  if(firstChildID != NilID)
-  {
-    result = GetSystemBodyFromID(system, firstChildID);
-  }
-  return result;
-}
-
-function inline system_body*
-GetSystemBodyFirstChildFromID(star_system* system, u32 bodyID)
-{
-  system_body* result = &system->bodies[0];
-  if(bodyID != NilID) 
-  {
-    GetSystemBodyFirstChild(system, GetSystemBodyFromID(system, bodyID));
-  }
-  return result;
-}
-
-function system_body*
-GetSystemBodyParent(star_system* system, system_body* body)
-{
-  system_body* result = &system->bodies[0];
-  
-  u32 parentID = body->parentID;
-  if(parentID != NilID)
-  {
-    result = GetSystemBodyFromID(system, parentID);
-  }
-  
-  return result;
-}
-
-function inline system_body*
-GetSystemBodyParentFromID(star_system* system, u32 bodyID)
-{
-  system_body* result = GetSystemBodyParent(system, GetSystemBodyFromID(system, bodyID));
-  return result;
-}
-
-function system_body*
-GetSystemBodyNext(star_system* system, system_body* body)
-{
-  system_body* result = &system->bodies[0];
-  if(body->type != system_body_type::Nil) 
-  {
-    u32 nextID = body->nextID;
-    if(nextID != NilID)
-    {
-      result = GetSystemBodyFromID(system, nextID);
-    }
-  }
-  return result;
-}
-
-function inline system_body*
-GetSystemBodyNextFromID(star_system* system, u32 bodyID)
-{
-  system_body* result = GetSystemBodyNext(system, GetSystemBodyFromID(system, bodyID));
-  return result;
-}
-
-function system_body*
-GetSystemBodyPrev(star_system* system, system_body* body)
-{
-  system_body* result = &system->bodies[0];
-  
-  u32 prevID = body->prevID;
-  if(prevID != NilID)
-  {
-    result = GetSystemBodyFromID(system, prevID);
-  }
-  
-  return result;
-}
-
-function inline system_body*
-GetSystemBodyPrevFromID(star_system* system, u32 bodyID)
-{
-  system_body* result = GetSystemBodyPrev(system, GetSystemBodyFromID(system, bodyID));
-  return result;
-}
-
-function void
-SystemAddBody(star_system* system, system_body* body, b32 insertAtFront=false)
-{
-  if(body->type != system_body_type::Nil)
-  {
-    if(body->parentID != NilID)
-    {
-      system_body* parent = GetSystemBodyFromID(system, body->parentID);
-      if(parent->firstChildID != NilID)
-      {
-        system_body* firstChild = GetSystemBodyFromID(system, parent->firstChildID);
-        if((firstChild->prevID != firstChild->ID) && (firstChild->nextID != firstChild->ID))
-        {
-          system_body* lastChild = GetSystemBodyFromID(system, firstChild->prevID);
-          body->prevID = lastChild->ID;
-          body->nextID = firstChild->ID;
-          firstChild->prevID = body->ID;
-          lastChild->nextID = body->ID;
-          if(insertAtFront)
-          {
-            parent->firstChildID = body->ID;
-          }
-        }
-        else
-        {
-          firstChild->prevID = body->ID;
-          firstChild->nextID = body->ID;
-          body->prevID = firstChild->ID;
-          body->nextID = firstChild->ID;
-        }
-      }
-      else
-      {
-        parent->firstChildID = body->ID;
-      }
-    }
-    else
-    {
-      // NOTE(Sebas): This is root body
-      if(system->rootBodyID == NilID)
-      {
-        system->rootBodyID = body->ID;
-      }
-    }
-  }
-}
-
-function u32
-CreateSystemBody(star_system* system, 
-                 system_body_type type,
-                 char* bodyName,
-                 vec2_f32 bodyRelHUPos, 
-                 f64 radiusHU, 
-                 game_colour colour,
-                 u32 parentID=NilID,
-                 b32 isRendered=true)
-{
-  HS_Assert(system->bodyCount < MAX_SYSTEM_BODY_COUNT);
-  u32 newID = ++system->bodyCount;
-  system_body* body = GetSystemBodyFromID(system, newID);
-  body->ID = newID;
-  body->type = type;
-  body->name = bodyName;
-  //body->systemHUPos = systemHUPos;
-  body->bodyRelHUPos = bodyRelHUPos;
-  body->radiusHU = radiusHU;
-  body->colour = colour;
-  body->firstChildID = NilID;
-  body->nextID = body->ID;
-  body->prevID = body->ID;
-  body->shouldRender = isRendered;
-  if(parentID == NilID)
-  {
-    parentID = (system->rootBodyID == NilID) ? NilID : system->rootBodyID;
-  }
-  
-  body->parentID = parentID;
-  SystemAddBody(system, body);
-  return body->ID;
-}
-#endif
-//////////////////////////////////////////////////////////////////
-
-
-function void
-GenerateSolarSystem(memory_arena* arena, star_system* systems, u32 systemID, f32 metersPerHU)
-{
-  star_system* system = &systems[systemID];
-  system->systemID = systemID;
-  
-  body_generation_info systemGenBodies[] =
-  {
-#define BODY(name,type,isRoot,...) {HS_Stringify(name),system_body_type::##type,isRoot, __VA_ARGS__},
-#include "helios_bodygen_table.inl"
-#undef BODY
-  };
-  
-  system_generation_info systemGenInfo = {};
-  
-  if(systemID == 0)
-  {
-    systemGenInfo.systemGenBodies = systemGenBodies;
-    systemGenInfo.systemGenBodyCount = HS_ArrayCount(systemGenBodies);
-  }
-  else
-  {
-    // TODO(Sebas): Generate Random System
-    //GenerateRandomSystem(&systemGenInfo);
-    systemGenInfo.systemGenBodies = systemGenBodies;
-    systemGenInfo.systemGenBodyCount = HS_ArrayCount(systemGenBodies);
-  }
-  
-  system->bodyCount = systemGenInfo.systemGenBodyCount;
-  system->bodies = PushType(arena, system_body, system->bodyCount);
-  
-  u32 lastStarID = 0;
-  u32 lastPlanetID = 0;
-  u32 lastMoonID = 0;
-  u32 lastAsteroidBeltID = 0;
-  
-  for(u32 bodyID = 0;
-      bodyID < system->bodyCount;
-      ++bodyID)
-  {
-    system_body* body = &system->bodies[bodyID];
-    body_generation_info* genBody = &systemGenInfo.systemGenBodies[bodyID];
-    body->bodyID = bodyID;
-    body->type = genBody->type;
-    body->name = genBody->name;
-    body->colour = genBody->colour;
-    body->shouldRender = true;
-    switch(body->type)
-    {
-      case system_body_type::Star:
-      {
-        body->parentID = 0;
-        lastStarID = body->bodyID;
-      } break;
-      case system_body_type::Planet:
-      {
-        body->parentID = lastStarID;
-        lastPlanetID = body->bodyID;
-      } break;
-      case system_body_type::Moon:
-      {
-        body->parentID = lastPlanetID;
-        lastMoonID = body->bodyID;
-      } break;
-      case system_body_type::AsteroidBelt:
-      {
-        body->parentID = lastStarID;
-        lastAsteroidBeltID = body->bodyID;
-      } break;
-    }
-    system_body* parentBody = &system->bodies[body->parentID];
-    body->mass = genBody->mass;
-    body->radiusHU = genBody->radiusM / metersPerHU;
-    keplerian_body* keplerBody = &body->keplerBody;
-    // TODO(Sebas): Binary Star system Calculations
-    if(body->parentID != body->bodyID)
-    {
-      
-      keplerBody->semiMajorAxis = genBody->avgDistanceFromParent;
-      keplerBody->eccentricity = genBody->eccentricity;
-      keplerBody->semiMinorAxis = CalculateBodySemiMinorAxis(keplerBody->semiMajorAxis, 
-                                                             keplerBody->eccentricity);
-      
-      keplerBody->meanMotion = CalculateBodyMeanMotion(parentBody->mass, 
-                                                       body->mass, 
-                                                       keplerBody->semiMajorAxis);
-      keplerBody->argumentOfPeriapsis = RadsFromDegreesF64(genBody->argumentOfPeriapsisDeg);
-    }
-  }
 }
 
 function void 
@@ -760,25 +456,7 @@ CameraGetNearestSystemBody(star_system* system, game_camera* camera, f64 systemH
   return result;
 }
 
-// TODO(Sebas): See what is salvagable
-////////////////////////////////////
-#if 0
-function vec2_f64
-GetSystemBodyWorldHUPos(star_system* system, system_body* body)
-{
-  vec2_f64 result = {};
-  
-  system_body* it = body;
-  while(it->type != system_body_type::Nil)
-  {
-    result.x += it->bodyRelHUPos.x;
-    result.y += it->bodyRelHUPos.y;
-    it = GetSystemBodyFromID(system, it->parentID);
-  }
-  return result;
-}
-#endif
-//////////////////////////////////////
+
 function inline f32
 GetSystemBodyScreenRadius(game_camera* camera, system_body_type type, f64 radiusHU)
 {
@@ -835,6 +513,71 @@ AreCirclesIntersecting(f32 x1, f32 y1, f32 r1,
   return  result;
 }
 
+
+
+#pragma pack(push, 1)
+struct bitmap_header
+{
+  u16 signature;
+  u32 fileSize;
+  u32 reserved1;
+  u32 bitmapOffset;
+  u32 infoHeaderSize;
+  u32 width;
+  u32 height;
+  u16 planes;
+  u16 bitsPerPixel;
+};
+#pragma pack(pop)
+
+function game_bitmap
+DEBUGLoadBitmap(debug_platform_read_entire_file* ReadEntireFile, 
+                thread_context* thread, 
+                char* fileName,
+                memory_arena* arena)
+{
+  game_bitmap result = {};
+  debug_read_file_result file = ReadEntireFile(thread, fileName);
+  if(file.contentSize != 0)
+  {
+    bitmap_header* header = (bitmap_header*)file.contents;
+    result.width = header->width;
+    result.height = header->height;
+    result.bytesPerPixel = header->bitsPerPixel/8;
+    result.memory = PushSize(arena, result.bytesPerPixel, result.width * result.height);
+    result.pitch = result.width * result.bytesPerPixel;
+    void* bitmap = (u8*)file.contents + header->bitmapOffset;
+    
+    u8* destRow = (u8*)result.memory + result.pitch * (result.height-1);
+    u8* srcRow = (u8*)bitmap;
+    u32 alpha = (255 << 24);
+    for(s32 y = 0;
+        y < result.height;
+        ++y)
+    {
+      //memcpy(destRow, srcRow, result.bytesPerPixel*result.width);
+      u32* srcPixel = (u32*)srcRow;
+      u32* destPixel = (u32*)destRow;
+      for(s32 x = 0;
+          x < result.width;
+          ++x)
+      {
+        u32 pixel = (*srcPixel);
+        u32 alpha = (pixel >> 24) & 0xff;
+        u32 red =   (pixel >> 16) & 0xff;
+        u32 green = (pixel >> 8) & 0xff;
+        u32 blue = (pixel) & 0xff;
+        *destPixel = (*srcPixel); 
+        srcPixel++;
+        destPixel++;
+      }
+      destRow -= result.pitch;
+      srcRow += result.pitch;
+    }
+  }
+  return result;
+}
+
 GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   HS_Assert(sizeof(game_state) <= memory->permanentMemorySize);
@@ -861,7 +604,6 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->currentSystemID = 0;
     //system->bodies = PushType(&gameState->galaxyArena, system_body, MAX_SYSTEM_BODY_COUNT);
     
-    
     camera->zoomLevelMin = -20;
     camera->zoomLevelMax = 40;
     camera->zoomLevel = 0;
@@ -872,10 +614,12 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     camera->systemHUPos = {};
     // TODO(Sebas): Should Camera Screen Pixel position change if buffer width/height is different than window width/height?
     
-    
+    char* starfield = "test/Starfield_01-1024x1024.bmp";
+    char* nebula = "test/Blue_Nebula_07-1024x1024.bmp";
+    char* sturcturedArt = "text/structured_art.bmp";
     //system = GenerateSolarSystem(&gameState->galaxyArena);
-    
-    
+    gameState->bitmap = DEBUGLoadBitmap(memory->DEBUGPlatformReadEntireFile, thread, 
+                                        starfield, &gameState->galaxyArena);
     
     //~ TODO(Sebas): This may be more appropriate to do in the platform layer.
     memory->isInitialized = true;
@@ -1090,7 +834,7 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   
   f64 timestep = 86400.0 * 10.0;
   
-  RenderRectangle(buffer, 0, 0, (f32)buffer->width, (f32)buffer->height, CreateGameColourARGB(1.0, 0.0, 0.0, 0.0));
+  
   
   // TODO(Sebas): Make sure system array is sorted by parenID 0 -> high
   system_body* targetBody = GetSystemBodyFromID(system, camera->newTargetBodyID);
@@ -1188,6 +932,8 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   camera->systemHUPos.x += camera->deltaSystemHUPos.x;
   camera->systemHUPos.y += camera->deltaSystemHUPos.y;
   
+  //RenderRectangle(buffer, 0, 0, buffer->width, buffer->height, {1.0, 1.0, 1.0, 1.0});
+  RenderBitmap(buffer, &gameState->bitmap);
   
   for(u32 bodyIndex = 0;
       bodyIndex < system->bodyCount;

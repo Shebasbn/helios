@@ -15,7 +15,7 @@ extern "C"
 */
   
   
-  struct thread_thread
+  struct thread_context
   {
     int threadID;
   };
@@ -23,17 +23,17 @@ extern "C"
 #if HELIOS_DEBUG
   struct debug_read_file_result
   {
-    u32 contentsSize;
+    u32 contentSize;
     void* contents;
   };
   
-# define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(thread_thread* thread, void* memory)
+# define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(thread_context* thread, void* memory)
   typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
   
-# define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name(thread_thread* thread, char* fileName)
+# define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name(thread_context* thread, char* fileName)
   typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
   
-# define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) b32 name(thread_thread* thread, char* fileName, u64 memorySize, void* memory)
+# define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) b32 name(thread_context* thread, char* fileName, u64 memorySize, void* memory)
   typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
   
 #endif
@@ -214,7 +214,7 @@ extern "C"
 #endif
   };
   
-# define GAME_UPDATE_AND_RENDER(name) void name(thread_thread* thread, \
+# define GAME_UPDATE_AND_RENDER(name) void name(thread_context* thread, \
 game_memory* memory, \
 game_frame_buffer* buffer, \
 game_input* inputState)
