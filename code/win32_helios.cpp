@@ -1024,7 +1024,7 @@ Win32MainWindowCallback(HWND    handle,
         GetWindowRect(window->handle, &windowRect);
         window->width = windowRect.right - windowRect.left;
         window->height = windowRect.bottom - windowRect.top;
-        Win32ResizeDIBSection(&window->frameBuffer, window->handle, client.width, client.height);
+        //Win32ResizeDIBSection(&window->frameBuffer, window->handle, client.width, client.height);
       }
     } break;
     case WM_CLOSE:
@@ -1270,7 +1270,7 @@ WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showC
   {
     HANDLE highResolutionTimer = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     f32 monitorRefreshRate = win32GetCurrentMonitorRefreshRate(window->handle);
-    f32 gameUpdateHz = monitorRefreshRate / 1.0f; 
+    f32 gameUpdateHz = monitorRefreshRate / 2.0f; 
     f32 targetFrameTimeSeconds = 1.0f / gameUpdateHz;
     s64 targetTicksPerFrame = RoundF64ToS64(targetFrameTimeSeconds * TicksPerSecond); //~ NOTE(Sebas): 1 tick == 100 nanosecods
     

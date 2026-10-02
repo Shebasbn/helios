@@ -71,7 +71,7 @@ struct galaxy
   star_system* systems;
 };
 
-struct game_bitmap
+struct loaded_bitmap
 {
   void* memory;
   s32 width;
@@ -100,7 +100,10 @@ struct game_state
   
   u64 accumulatorTicks;
   
-  game_bitmap bitmap;
+  loaded_bitmap background;
+  
+  loaded_bitmap sun64TextureMap;
+  loaded_bitmap sun128TextureMap;
   
   s32 textLength;
   char textBuffer[GAME_TEXT_BUFFER_MAX_SIZE];

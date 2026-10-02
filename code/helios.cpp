@@ -31,46 +31,103 @@ CreateGameColourARGB(f32 alpha, f32 red, f32 green, f32 blue)
 }
 
 function void
-RenderBitmap(game_frame_buffer* buffer,
-             game_bitmap* bitmap)
+RenderBitmap(game_frame_buffer* buffer, 
+             loaded_bitmap* bitmap, 
+             f32 realX, f32 realY)
 {
-  s32 width = (bitmap->width < buffer->width) ? bitmap->width : buffer->width;
-  s32 height = (bitmap->height < buffer->height) ? bitmap->height : buffer->height;
-  /*
-  s32 minX = RoundF32ToS32(x - (f32)width/2.0);
-  s32 minY = RoundF32ToS32(y - (f32)height/2.0);
-  s32 maxX = RoundF32ToS32(x + (f32)width/2.0);
-  s32 maxY = RoundF32ToS32(y + (f32)height/2.0);
+  s32 minX = RoundF32ToS32(realX);
+  s32 minY = RoundF32ToS32(realY);
+  s32 maxX = RoundF32ToS32(realX + bitmap->width);
+  s32 maxY = RoundF32ToS32(realY + bitmap->height);
   
-  minX = (minX > 0) ? minX : 0;
-  minY = (minY > 0) ? minY : 0;
-  maxX = (maxX < buffer->width) ? maxX : buffer->width;
-  maxY = (maxY < buffer->height) ? maxY : buffer->height;
-  */
+  minX = (minX < 0) ? 0 : minX;
+  minY = (minY < 0) ? 0 : minY;
+  maxX = (maxX > buffer->width) ? buffer->width : maxX;
+  maxY = (maxY > buffer->height) ? buffer->height : maxY;
   
-  s32 minX = 0;
-  s32 minY = 0;
   u8* destRow = (u8*)buffer->memory + buffer->pitch * minY + buffer->bytesPerPixel * minX;
   u8* srcRow = (u8*)bitmap->memory;
-  for(u32 y = 0;
-      y < height;
+  for(u32 y = minY;
+      y < maxY;
       ++y)
   {
     u32* srcPixel = (u32*)srcRow;
     u32* destPixel = (u32*)destRow;
-    for(u32 x = 0;
-        x < width;
+    for(u32 x = minX;
+        x < maxX;
         ++x)
     {
-      u32 colour = *srcPixel++;
-      if((colour >> 24))
-      {
-        *destPixel = colour;
-      }
-      else
-      {
-        *destPixel = *destPixel;
-      }
+      f32 A = (f32)(((*srcPixel >> 24) & 0xff) / 255.0f);
+      f32 srcR = (f32)((*srcPixel >> 16) & 0xff);
+      f32 srcG = (f32)((*srcPixel >> 8) & 0xff);
+      f32 srcB = (f32)((*srcPixel >> 0) & 0xff);
+      f32 destR = (f32)((*destPixel >> 16) & 0xff);
+      f32 destG = (f32)((*destPixel >> 8) & 0xff);
+      f32 destB = (f32)((*destPixel >> 0) & 0xff);
+      
+      f32 R = (1.0f-A)*destR + A*srcR;
+      f32 G = (1.0f-A)*destG + A*srcG;
+      f32 B = (1.0f-A)*destB + A*srcB;
+      
+      *destPixel = HS_ARGB(255, RoundF32ToS32(R), RoundF32ToS32(G), RoundF32ToS32(B));
+      
+      ++srcPixel;
+      ++destPixel;
+    }
+    srcRow += bitmap->pitch;
+    destRow += buffer->pitch;
+  }
+}
+
+
+function void
+RenderBitmap(game_frame_buffer* buffer, 
+             f32 destLeftOffset, s32 destTopOffset, s32 destRightOffset, s32 destBottomOffset, 
+             loaded_bitmap* bitmap, 
+             s32 srcLeftOffset, s32 srcTopOffset, s32 srcRightOffset, s32 srcBottomOffset)
+{
+  
+  s32 srcMinX = (srcLeftOffset > 0 ? srcLeftOffset : 0);
+  s32 srcMinY = (srcTopOffset > 0 ? srcTopOffset : 0);
+  s32 srcMaxX = (srcRightOffset > 0) ? (bitmap->width - srcMinX) - srcRightOffset : (bitmap->width - srcMinX);
+  s32 srcMaxY = (srcBottomOffset > 0) ? (bitmap->height - srcMinY) - srcBottomOffset : (bitmap->height - srcMinY);
+  
+  s32 destMinX = (destLeftOffset > 0) ? destLeftOffset : 0;
+  s32 destMinY = (destTopOffset > 0) ? destTopOffset : 0;
+  
+  s32 destMaxX = destMinX + srcMaxX;
+  s32 destMaxY = destMinY + srcMaxY;
+  
+  destMaxX = ((destMaxX > buffer->width) ? buffer->width : destMaxX) - AbsS32(destRightOffset);
+  destMaxY = ((destMaxY > buffer->height) ? buffer->height : destMaxY) - AbsS32(destBottomOffset);
+  
+  u8* destRow = (u8*)buffer->memory + buffer->pitch * destMinY + buffer->bytesPerPixel * destMinX;
+  u8* srcRow = (u8*)bitmap->memory + bitmap->pitch * srcMinY + bitmap->bytesPerPixel * srcMinX;
+  for(u32 y = destMinY;
+      y < destMaxY;
+      ++y)
+  {
+    u32* srcPixel = (u32*)srcRow;
+    u32* destPixel = (u32*)destRow;
+    for(u32 x = destMinX;
+        x < destMaxX;
+        ++x)
+    {
+      f32 A = (f32)(((*srcPixel >> 24) & 0xff) / 255.0f);
+      f32 srcR = (f32)((*srcPixel >> 16) & 0xff);
+      f32 srcG = (f32)((*srcPixel >> 8) & 0xff);
+      f32 srcB = (f32)((*srcPixel >> 0) & 0xff);
+      f32 destR = (f32)((*destPixel >> 16) & 0xff);
+      f32 destG = (f32)((*destPixel >> 8) & 0xff);
+      f32 destB = (f32)((*destPixel >> 0) & 0xff);
+      
+      // TODO(Sebas): premultiplied alpha!
+      f32 R = (1.0f-A)*destR + A*srcR;
+      f32 G = (1.0f-A)*destG + A*srcG;
+      f32 B = (1.0f-A)*destB + A*srcB;
+      
+      *destPixel = HS_ARGB(255, RoundPosF32ToS32(R), RoundPosF32ToS32(G), RoundPosF32ToS32(B));
+      ++srcPixel;
       ++destPixel;
     }
     srcRow += bitmap->pitch;
@@ -405,7 +462,7 @@ ArenaPush(memory_arena* arena, u64 size)
 {
   memory_index newOffset = arena->offset + size;
   HS_Assert(newOffset < arena->size);
-  void* result = (u8*)arena->memory + newOffset;
+  void* result = (u8*)arena->memory + arena->offset;
   arena->offset = newOffset;
   return result;
 }
@@ -463,7 +520,14 @@ GetSystemBodyScreenRadius(game_camera* camera, system_body_type type, f64 radius
   f32 minRadius = 0;
   if(type == system_body_type::Star)
   {
-    minRadius = 30;
+    if(radiusHU >= 64)
+    {
+      minRadius = 64;
+    }
+    else
+    {
+      minRadius = 32;
+    }
   }
   else if(type == system_body_type::Planet)
   {
@@ -473,10 +537,7 @@ GetSystemBodyScreenRadius(game_camera* camera, system_body_type type, f64 radius
   {
     minRadius = 5;
   }
-  /*else if((type == system_body_type::Satellite) || (type == system_body_type::Ship))
-  {
-    minRadius = 5;
-  }*/
+  
   
   f32 result = HS_Max(radiusHU * camera->scalePixelsPerHU, minRadius);
   return result;
@@ -523,20 +584,30 @@ struct bitmap_header
   u32 reserved1;
   u32 bitmapOffset;
   u32 infoHeaderSize;
-  u32 width;
-  u32 height;
+  s32 width;
+  s32 height;
   u16 planes;
   u16 bitsPerPixel;
+  u32 compression;
+  u32 imageSize;
+  s32 horzResolution;
+  s32 vertResolution;
+  u32 coloursUsed;
+  u32 colorsImportant;
+  
+  u32 redMask;
+  u32 greenMask;
+  u32 blueMask;
 };
 #pragma pack(pop)
 
-function game_bitmap
+function loaded_bitmap
 DEBUGLoadBitmap(debug_platform_read_entire_file* ReadEntireFile, 
                 thread_context* thread, 
                 char* fileName,
                 memory_arena* arena)
 {
-  game_bitmap result = {};
+  loaded_bitmap result = {};
   debug_read_file_result file = ReadEntireFile(thread, fileName);
   if(file.contentSize != 0)
   {
@@ -548,9 +619,24 @@ DEBUGLoadBitmap(debug_platform_read_entire_file* ReadEntireFile,
     result.pitch = result.width * result.bytesPerPixel;
     void* bitmap = (u8*)file.contents + header->bitmapOffset;
     
-    u8* destRow = (u8*)result.memory + result.pitch * (result.height-1);
-    u8* srcRow = (u8*)bitmap;
-    u32 alpha = (255 << 24);
+    
+    u32 redMask = header->redMask;
+    u32 greenMask = header->greenMask;
+    u32 blueMask = header->blueMask;
+    u32 alphaMask = ~(redMask | greenMask | blueMask);
+    
+    bit_scan_result alphaShift = FindLeastSignificantSetBit(alphaMask);
+    bit_scan_result redShift = FindLeastSignificantSetBit(redMask);
+    bit_scan_result greenShift = FindLeastSignificantSetBit(greenMask);
+    bit_scan_result blueShift = FindLeastSignificantSetBit(blueMask);
+    
+    HS_Assert(alphaShift.found); 
+    HS_Assert(redShift.found); 
+    HS_Assert(greenShift.found); 
+    HS_Assert(blueShift.found); 
+    
+    u8* destRow = (u8*)result.memory;
+    u8* srcRow = (u8*)bitmap + result.pitch * (result.height-1);
     for(s32 y = 0;
         y < result.height;
         ++y)
@@ -562,17 +648,14 @@ DEBUGLoadBitmap(debug_platform_read_entire_file* ReadEntireFile,
           x < result.width;
           ++x)
       {
-        u32 pixel = (*srcPixel);
-        u32 alpha = (pixel >> 24) & 0xff;
-        u32 red =   (pixel >> 16) & 0xff;
-        u32 green = (pixel >> 8) & 0xff;
-        u32 blue = (pixel) & 0xff;
-        *destPixel = (*srcPixel); 
-        srcPixel++;
-        destPixel++;
+        u32 colour = *srcPixel++;
+        *destPixel++ = ((((colour >> alphaShift.index) & 0xFF) << 24) | 
+                        (((colour >> redShift.index) & 0xFF) << 16)   | 
+                        (((colour >> greenShift.index) & 0xFF) << 8)  |
+                        (((colour >> blueShift.index) & 0xFF) << 0)); 
       }
-      destRow -= result.pitch;
-      srcRow += result.pitch;
+      destRow += result.pitch;
+      srcRow -= result.pitch;
     }
   }
   return result;
@@ -617,9 +700,13 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     char* starfield = "test/Starfield_01-1024x1024.bmp";
     char* nebula = "test/Blue_Nebula_07-1024x1024.bmp";
     char* sturcturedArt = "text/structured_art.bmp";
+    char* handmade = "test/my_test_background.bmp";
     //system = GenerateSolarSystem(&gameState->galaxyArena);
-    gameState->bitmap = DEBUGLoadBitmap(memory->DEBUGPlatformReadEntireFile, thread, 
-                                        starfield, &gameState->galaxyArena);
+    gameState->background = DEBUGLoadBitmap(memory->DEBUGPlatformReadEntireFile, thread, 
+                                            starfield, &gameState->galaxyArena);
+    
+    gameState->sun64TextureMap = DEBUGLoadBitmap(memory->DEBUGPlatformReadEntireFile, thread, "test/Sun-64x64.bmp", &gameState->galaxyArena);
+    gameState->sun128TextureMap = DEBUGLoadBitmap(memory->DEBUGPlatformReadEntireFile, thread, "test/Sun-128x128.bmp", &gameState->galaxyArena);
     
     //~ TODO(Sebas): This may be more appropriate to do in the platform layer.
     memory->isInitialized = true;
@@ -886,6 +973,10 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     camera->deltaSystemHUPos = {};
   }
   
+  camera->targetSystemHUPos.x += camera->deltaSystemHUPos.x;
+  camera->targetSystemHUPos.y += camera->deltaSystemHUPos.y;
+  
+  
   camera->isMoving = false;
   
   f64 systemDeltaX = camera->targetSystemHUPos.x - camera->systemHUPos.x;
@@ -929,11 +1020,11 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   camera->systemDeltaY = systemDeltaY;
   
   
-  camera->systemHUPos.x += camera->deltaSystemHUPos.x;
-  camera->systemHUPos.y += camera->deltaSystemHUPos.y;
+  //camera->systemHUPos.x += camera->deltaSystemHUPos.x;
+  //camera->systemHUPos.y += camera->deltaSystemHUPos.y;
   
-  //RenderRectangle(buffer, 0, 0, buffer->width, buffer->height, {1.0, 1.0, 1.0, 1.0});
-  RenderBitmap(buffer, &gameState->bitmap);
+  RenderRectangle(buffer, 0, 0, buffer->width, buffer->height, {1.0, 1.0, 0.0, 1.0});
+  RenderBitmap(buffer, 0, 0, 0, 0, &gameState->background, 0, 0, 0, 0);
   
   for(u32 bodyIndex = 0;
       bodyIndex < system->bodyCount;
@@ -996,7 +1087,22 @@ GAME_EXPORT GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 0
       RenderRectangle(buffer, body->screenPixelPos.x - screenRadius, body->screenPixelPos.y - screenRadius, body->screenPixelPos.x + screenRadius, body->screenPixelPos.y + screenRadius, body->colour);
 #endif
-      RenderCircle(buffer, body->screenPixelPos.x, body->screenPixelPos.y, screenRadius, body->colour);
+      if(body->bodyID == 0)
+      {
+        if(screenRadius >= 64)
+        {
+          RenderBitmap(buffer, body->screenPixelPos.x - 64, body->screenPixelPos.y - 64, 0, 0,&gameState->sun128TextureMap, 0, 0, 128*5, 0);
+        }
+        else
+        {
+          RenderBitmap(buffer, body->screenPixelPos.x - 32, body->screenPixelPos.y - 32, 0, 0,&gameState->sun64TextureMap, 0, 0, 64*5, 0);
+        }
+      } 
+      else
+      {
+        RenderCircle(buffer, body->screenPixelPos.x, body->screenPixelPos.y, screenRadius, body->colour);
+      }
+      
     }
   }
   

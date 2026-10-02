@@ -5,6 +5,7 @@
 
 #if HELIOS_MSVC
 #include "intrin.h"
+#pragma intrinsic(_BitScanForward)
 #endif
 
 #include "math.h"
@@ -158,7 +159,36 @@ function inline f64 ModF64(f64 a, f64 b)
   return result;
 };
 
-function inline f32 LerpF32(f32 a, f32 b, f32 t)
+struct bit_scan_result
+{
+  b32 found;
+  u32 index;
+};
+inline bit_scan_result
+FindLeastSignificantSetBit(u32 value)
+{
+  bit_scan_result result = {};
+  
+#if HELIOS_MSVC
+  result.found = (b32)(_BitScanForward(&(unsigned long)result.index, value) != 0);
+#else
+  for(u32 test = 0;
+      test < 32;
+      ++test)
+  {
+    if(value & (1 << test))
+    {
+      result.index = test;
+      result.found = true;
+      break;
+    }
+  }
+#endif
+  
+  return result;
+}
+
+inline f32 LerpF32(f32 a, f32 b, f32 t)
 {
   f32 result = a + (b - a)*t;
   return result;
